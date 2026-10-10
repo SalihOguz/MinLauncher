@@ -44,6 +44,8 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 ## Drawer
 
 - One screen; the keyboard is up or down. **Opens with the keyboard up** (setting, default on).
+- The list never resizes with the keyboard. The keyboard and search bar float over it, and the keyboard's room is kept for the whole visit, so closing the keyboard never moves an app under your finger. Home fades out while the drawer is open.
+- Names are 26 sp with the home screen's soft shadow, rows about 50 dp. Background dim is a setting (default 30%).
 - The list grows upward from the search bar, which sits above the keyboard.
 - **While typing:** from the bar upward, "Search Brave for …", then matching apps, best match right above the web row.
 - **Enter is a search key and always searches the web** (setting: open the top app instead). Web search opens Brave with its own search engine, or the default browser with Brave Search if Brave isn't installed.
@@ -52,10 +54,10 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - **When not typing,** from the bar upward: Pinned, Recent (v0.2), New (v0.2), Folders (v0.3), All apps A–Z.
 - **Pinned:** two text columns, no icons, hold and drag to reorder. 8 pinned apps take 4 rows.
 - **Icons:** every other drawer row gets a monochrome icon (v0.3, `AdaptiveIconDrawable.getMonochrome()` with a greyscale fallback). Names never shift.
-- **Search matching:** start of the name, start of any word, initials (`kn` → Keep Notes), anywhere in the name; ignores symbols and accents (`edevlet` → e-Devlet). Search words and typos come in v0.2.
+- **Search matching,** best first: start of the name, start of any word, the app's search words (`bank` → Halkbank), initials (`kn` → Keep Notes), inside the name (from 3 letters), small typos (from 4 letters: `alrmy` → Alarmy). Ignores symbols and accents (`edevlet` → e-Devlet).
 - Scrolling the list hides the keyboard.
-- **Recent (v0.2):** 5 apps. Skips apps on home, pinned, on a swipe, games, and any app with "Show in Recent" off (per-app switch, off by default for games).
-- **New (v0.2):** stays until the app is opened once, however long that takes. ✦ marker for 3 days after install.
+- **Recent (v0.2):** 5 apps (setting: off, 5, 10), most recently opened from MinLauncher first. Skips apps on home, pinned apps, games, and any app with "Show in Recent" off (per-app switch, off by default for games). "Remove from Recent" hides an app until it's opened again.
+- **New (v0.2):** apps installed after MinLauncher started keeping track, never opened from it; they stay until opened once (or removed, pinned, or put on home). ✦ marker for 3 days after install, wherever the name appears.
 - **Folders (v0.3):** user-created (+ New folder in the drawer and in Move to folder); Unsorted is the inbox; folder suggestion from `ApplicationInfo.category` for unfiled apps.
 - **A–Z rail (v0.3):** when the keyboard is down. Letters bend away from the finger and the list filters to that letter. Tapping empty space clears the filter.
 - **Hidden apps:** gone from the drawer and search. Listed in Settings (v0.1), later in Library.
@@ -63,7 +65,8 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 ## Long-press sheet
 
 - **v0.1:** install date; Open · App info · Uninstall; Pin/Unpin · Add to/Remove from home · Rename · Hide.
-- **Later:** last opened, size, folder, search words; Move to folder; Remove from New / Remove from Recent; Show in Recent switch; folder suggestion.
+- **v0.2:** last opened; Rename & search words; Remove from New / Remove from Recent; Show in Recent switch.
+- **Later:** size, folder; Move to folder; folder suggestion.
 
 ## Manage (v0.4): Library · Stats · Settings
 
@@ -86,6 +89,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Drawer | Only match opens itself | off | v0.1 |
 | Drawer | Enter key: web search / top app | web search | v0.1 |
 | Drawer | Recent: off / 5 / 10 | 5 | v0.2 |
+| Drawer | Background dim | 30% | v0.1 |
 | Drawer | A–Z rail | on | v0.3 |
 | Apps | Hidden apps | — | v0.1 |
 | Apps | Folders, renamed apps and search words, apps that skip Recent | games skip Recent | v0.2–v0.3 |

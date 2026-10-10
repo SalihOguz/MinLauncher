@@ -48,6 +48,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
 
     val open: (LauncherApp) -> Unit = { app ->
         Actions.launch(context, app.app)
+        viewModel.recordLaunch(app.key)
         screen = Screen.HOME
     }
 
@@ -92,6 +93,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                     Actions.webSearch(context, query)
                     screen = Screen.HOME
                 },
+                onVisitEnd = viewModel::recordVisit,
                 onClose = { screen = Screen.HOME },
             )
         }
@@ -109,6 +111,8 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 onHome = onHome,
                 pinned = pinned,
                 hidden = hidden,
+                inNew = app.key in state.newKeys,
+                inRecent = app.key in state.recentKeys,
                 onDismiss = { sheetKey = null },
                 onAction = { action ->
                     sheetKey = null
@@ -118,6 +122,12 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                         SheetAction.UNINSTALL -> Actions.uninstall(context, app.app)
                         SheetAction.RENAME -> renameKey = app.key
                         SheetAction.TOGGLE_HIDDEN -> if (hidden) viewModel.unhide(app.key) else viewModel.hide(app.key)
+                        SheetAction.REMOVE_FROM_NEW -> viewModel.dismissFromNew(app.key)
+                        SheetAction.REMOVE_FROM_RECENT -> viewModel.removeFromRecent(app.key)
+                        SheetAction.TOGGLE_SHOW_IN_RECENT -> {
+                            viewModel.setShowInRecent(app.key, !app.showInRecent)
+                            sheetKey = app.key
+                        }
                         SheetAction.TOGGLE_PIN -> when {
                             pinned -> viewModel.unpin(app.key)
                             onHome -> Actions.toast(context, "${app.label} is on home already")
@@ -137,8 +147,8 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             RenameDialog(
                 app = app,
                 onDismiss = { renameKey = null },
-                onSave = { label ->
-                    viewModel.rename(app.key, label)
+                onSave = { label, words ->
+                    viewModel.rename(app.key, label, words)
                     renameKey = null
                 },
             )

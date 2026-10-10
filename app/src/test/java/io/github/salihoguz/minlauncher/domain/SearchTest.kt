@@ -20,10 +20,10 @@ class SearchTest {
 
     @Test
     fun prefixBeatsWordPrefixBeatsInitialsBeatsContains() {
-        assertEquals(0, Search.score("Keep Notes", "kee"))
-        assertEquals(1, Search.score("Keep Notes", "not"))
-        assertEquals(2, Search.score("Keep Notes", "kn"))
-        assertEquals(3, Search.score("Keep Notes", "otes"))
+        assertEquals(Search.PREFIX, Search.score("Keep Notes", "kee"))
+        assertEquals(Search.WORD_PREFIX, Search.score("Keep Notes", "not"))
+        assertEquals(Search.INITIALS, Search.score("Keep Notes", "kn"))
+        assertEquals(Search.CONTAINS, Search.score("Keep Notes", "otes"))
         assertNull(Search.score("Keep Notes", "xyz"))
         assertNull(Search.score("Keep Notes", "  "))
     }
@@ -45,7 +45,34 @@ class SearchTest {
     @Test
     fun shortQueriesDontMatchInsideNames() {
         assertNull(Search.score("Signal", "al"))
-        assertEquals(3, Search.score("Signal", "nal"))
-        assertEquals(0, Search.score("Alarmy", "al"))
+        assertEquals(Search.CONTAINS, Search.score("Signal", "nal"))
+        assertEquals(Search.PREFIX, Search.score("Alarmy", "al"))
+    }
+
+    @Test
+    fun searchWordsFindAppsByWhatTheyDo() {
+        assertEquals(Search.SEARCH_WORD, Search.score("Komoot", "hik", listOf("hiking", "bike")))
+        assertEquals(Search.SEARCH_WORD, Search.score("Halkbank", "mon", listOf("money")))
+        assertNull(Search.score("Komoot", "hik"))
+        val apps = listOf("Akbank", "Halkbank", "Hevy")
+        val words = mapOf("Halkbank" to listOf("bank", "money"), "Akbank" to listOf("bank"))
+        assertEquals(listOf("Akbank", "Halkbank"), Search.filter(apps, "bank", searchWords = { words[it].orEmpty() }) { it })
+    }
+
+    @Test
+    fun toleratesSmallTyposFromFourLetters() {
+        assertEquals(Search.TYPO, Search.score("Alarmy", "alrmy"))
+        assertEquals(Search.TYPO, Search.score("Keep Notes", "kepe"))
+        assertEquals(Search.TYPO, Search.score("WhatsApp", "whta"))
+        assertNull(Search.score("Alarmy", "alr"))
+        assertNull(Search.score("Signal", "brave"))
+    }
+
+    @Test
+    fun editDistanceCountsSwapsAsOne() {
+        assertEquals(0, Search.editDistance("abc", "abc"))
+        assertEquals(1, Search.editDistance("abc", "acb"))
+        assertEquals(1, Search.editDistance("abc", "abcd"))
+        assertEquals(2, Search.editDistance("kitten", "sittin"))
     }
 }

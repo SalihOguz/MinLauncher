@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,6 +23,7 @@ data class LauncherSettings(
     val pinned: List<String> = emptyList(),
     val hidden: Set<String> = emptySet(),
     val renames: Map<String, String> = emptyMap(),
+    val searchWords: Map<String, List<String>> = emptyMap(),
     val clockMode: ClockMode = ClockMode.AUTO,
     val keyboardOnOpen: Boolean = true,
     val openOnlyMatch: Boolean = false,
@@ -28,6 +31,17 @@ data class LauncherSettings(
     val doubleTapToLock: Boolean = true,
     /** How much the drawer darkens the wallpaper, 0..1. */
     val drawerDim: Float = 0.3f,
+    /** How many Recent apps the drawer shows: 0, 5 or 10. */
+    val recentCount: Int = 5,
+    /** When MinLauncher started keeping track. Apps installed after this can be New. */
+    val trackingSince: Long = Long.MAX_VALUE,
+    /** Last time each app was opened from MinLauncher. */
+    val lastOpened: Map<String, Long> = emptyMap(),
+    /** Per-app "Show in Recent" choices; apps without one follow the default (off for games). */
+    val showInRecent: Map<String, Boolean> = emptyMap(),
+    /** When each app was removed from Recent. */
+    val removedFromRecent: Map<String, Long> = emptyMap(),
+    val dismissedFromNew: Set<String> = emptySet(),
 )
 
 class SettingsStore(context: Context) {
@@ -35,21 +49,48 @@ class SettingsStore(context: Context) {
     private val store = context.dataStore
 
     val settings: Flow<LauncherSettings> = store.data.map { p ->
+        val renames = HashMap<String, String>()
+        val words = HashMap<String, List<String>>()
+        val lastOpened = HashMap<String, Long>()
+        val showInRecent = HashMap<String, Boolean>()
+        val removed = HashMap<String, Long>()
+        for ((key, value) in p.asMap()) {
+            val name = key.name
+            when {
+                name.startsWith(RENAME) -> renames[name.removePrefix(RENAME)] = value.toString()
+                name.startsWith(WORDS) -> words[name.removePrefix(WORDS)] = splitWords(value.toString())
+                name.startsWith(LAST_OPENED) -> (value as? Long)?.let { lastOpened[name.removePrefix(LAST_OPENED)] = it }
+                name.startsWith(SHOW_IN_RECENT) -> (value as? Boolean)?.let { showInRecent[name.removePrefix(SHOW_IN_RECENT)] = it }
+                name.startsWith(REMOVED_FROM_RECENT) -> (value as? Long)?.let { removed[name.removePrefix(REMOVED_FROM_RECENT)] = it }
+            }
+        }
         LauncherSettings(
             home = p[HOME].toKeyList(),
             pinned = p[PINNED].toKeyList(),
             hidden = p[HIDDEN].orEmpty(),
-            renames = p.asMap().entries
-                .filter { it.key.name.startsWith(RENAME_PREFIX) }
-                .associate { it.key.name.removePrefix(RENAME_PREFIX) to it.value.toString() },
+            renames = renames,
+            searchWords = words,
             clockMode = p[CLOCK_MODE]?.let { name -> ClockMode.entries.firstOrNull { it.name == name } } ?: ClockMode.AUTO,
             keyboardOnOpen = p[KEYBOARD_ON_OPEN] ?: true,
             openOnlyMatch = p[OPEN_ONLY_MATCH] ?: false,
             enterSearchesWeb = p[ENTER_SEARCHES_WEB] ?: true,
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
             drawerDim = p[DRAWER_DIM] ?: 0.3f,
+            recentCount = p[RECENT_COUNT] ?: 5,
+            trackingSince = p[TRACKING_SINCE] ?: Long.MAX_VALUE,
+            lastOpened = lastOpened,
+            showInRecent = showInRecent,
+            removedFromRecent = removed,
+            dismissedFromNew = p[DISMISSED_FROM_NEW].orEmpty(),
         )
     }
+
+    /** Called once on start; from then on, newly installed apps can show up in New. */
+    suspend fun ensureTrackingStarted() = store.edit { p ->
+        if (p[TRACKING_SINCE] == null) p[TRACKING_SINCE] = System.currentTimeMillis()
+    }
+
+    suspend fun recordLaunch(key: String) = store.edit { it[longPreferencesKey(LAST_OPENED + key)] = System.currentTimeMillis() }
 
     suspend fun setHome(keys: List<String>) = store.edit { it[HOME] = keys.take(HomeLayout.MAX_APPS).joinToString(SEPARATOR) }
 
@@ -84,9 +125,22 @@ class SettingsStore(context: Context) {
 
     suspend fun unhide(key: String) = store.edit { p -> p[HIDDEN] = p[HIDDEN].orEmpty() - key }
 
-    suspend fun rename(key: String, label: String?) = store.edit { p ->
-        val prefKey = stringPreferencesKey(RENAME_PREFIX + key)
-        if (label.isNullOrBlank()) p.remove(prefKey) else p[prefKey] = label.trim()
+    suspend fun rename(key: String, label: String?, words: List<String>) = store.edit { p ->
+        val labelKey = stringPreferencesKey(RENAME + key)
+        if (label.isNullOrBlank()) p.remove(labelKey) else p[labelKey] = label.trim()
+        val wordsKey = stringPreferencesKey(WORDS + key)
+        val cleaned = words.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (cleaned.isEmpty()) p.remove(wordsKey) else p[wordsKey] = cleaned.joinToString(", ")
+    }
+
+    suspend fun setShowInRecent(key: String, value: Boolean) = store.edit { it[booleanPreferencesKey(SHOW_IN_RECENT + key)] = value }
+
+    suspend fun removeFromRecent(key: String) = store.edit {
+        it[longPreferencesKey(REMOVED_FROM_RECENT + key)] = System.currentTimeMillis()
+    }
+
+    suspend fun dismissFromNew(key: String) = store.edit { p ->
+        p[DISMISSED_FROM_NEW] = p[DISMISSED_FROM_NEW].orEmpty() + key
     }
 
     suspend fun setClockMode(mode: ClockMode) = store.edit { it[CLOCK_MODE] = mode.name }
@@ -95,21 +149,31 @@ class SettingsStore(context: Context) {
     suspend fun setEnterSearchesWeb(value: Boolean) = store.edit { it[ENTER_SEARCHES_WEB] = value }
     suspend fun setDoubleTapToLock(value: Boolean) = store.edit { it[DOUBLE_TAP_LOCK] = value }
     suspend fun setDrawerDim(value: Float) = store.edit { it[DRAWER_DIM] = value.coerceIn(0f, 0.8f) }
+    suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 10) }
 
     private fun String?.toKeyList(): List<String> =
         this?.split(SEPARATOR)?.filter { it.isNotBlank() }?.distinct().orEmpty()
 
+    private fun splitWords(text: String): List<String> = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
     private companion object {
         const val SEPARATOR = "\n"
-        const val RENAME_PREFIX = "rename:"
+        const val RENAME = "rename:"
+        const val WORDS = "words:"
+        const val LAST_OPENED = "last:"
+        const val SHOW_IN_RECENT = "show_recent:"
+        const val REMOVED_FROM_RECENT = "recent_removed:"
         val HOME = stringPreferencesKey("home")
         val PINNED = stringPreferencesKey("pinned")
         val HIDDEN = stringSetPreferencesKey("hidden")
+        val DISMISSED_FROM_NEW = stringSetPreferencesKey("new_dismissed")
         val CLOCK_MODE = stringPreferencesKey("clock_mode")
         val KEYBOARD_ON_OPEN = booleanPreferencesKey("keyboard_on_open")
         val OPEN_ONLY_MATCH = booleanPreferencesKey("open_only_match")
         val ENTER_SEARCHES_WEB = booleanPreferencesKey("enter_searches_web")
         val DOUBLE_TAP_LOCK = booleanPreferencesKey("double_tap_lock")
         val DRAWER_DIM = floatPreferencesKey("drawer_dim")
+        val RECENT_COUNT = intPreferencesKey("recent_count")
+        val TRACKING_SINCE = longPreferencesKey("tracking_since")
     }
 }

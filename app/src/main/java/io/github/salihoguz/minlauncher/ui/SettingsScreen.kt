@@ -106,6 +106,15 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
         item { Toggle("Open with the keyboard", null, settings.keyboardOnOpen, viewModel::setKeyboardOnOpen) }
         item { DimSlider(settings.drawerDim, viewModel::setDrawerDim) }
         item {
+            Choice(
+                title = "Recent apps",
+                help = "Skips apps on home, pinned apps, and games. Turn it off per app from its long-press menu.",
+                options = listOf("Off" to 0, "5" to 5, "10" to 10),
+                selected = settings.recentCount,
+                onSelect = viewModel::setRecentCount,
+            )
+        }
+        item {
             Toggle(
                 "Open the only match by itself",
                 "Off keeps web search one tap away.",

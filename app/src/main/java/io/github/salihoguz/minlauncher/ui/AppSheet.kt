@@ -17,12 +17,15 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -32,11 +35,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
+import io.github.salihoguz.minlauncher.domain.Sections
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class SheetAction { OPEN, APP_INFO, UNINSTALL, TOGGLE_PIN, TOGGLE_HOME, RENAME, TOGGLE_HIDDEN }
+enum class SheetAction {
+    OPEN, APP_INFO, UNINSTALL, TOGGLE_PIN, TOGGLE_HOME, RENAME, TOGGLE_HIDDEN,
+    REMOVE_FROM_NEW, REMOVE_FROM_RECENT, TOGGLE_SHOW_IN_RECENT,
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +52,8 @@ fun AppSheet(
     onHome: Boolean,
     pinned: Boolean,
     hidden: Boolean,
+    inNew: Boolean,
+    inRecent: Boolean,
     onDismiss: () -> Unit,
     onAction: (SheetAction) -> Unit,
 ) {
@@ -52,8 +61,13 @@ fun AppSheet(
     val installed = remember(app.app.installedAt) {
         SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(app.app.installedAt))
     }
+    val lastOpened = app.lastOpened
+    val opened = remember(lastOpened) {
+        if (lastOpened == null) "not opened from MinLauncher yet" else "opened ${relativeDays(lastOpened)}"
+    }
     val details = buildList {
         add("Installed $installed")
+        add(opened)
         if (app.isRenamed) add("named “${app.app.label}”")
         if (app.app.user != Process.myUserHandle()) add("work profile")
         if (onHome) add("on home") else if (pinned) add("pinned")
@@ -83,8 +97,31 @@ fun AppSheet(
                 SheetButton(if (onHome) "Remove from home" else "Add to home") { onAction(SheetAction.TOGGLE_HOME) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SheetButton("Rename") { onAction(SheetAction.RENAME) }
+                SheetButton("Rename & search words") { onAction(SheetAction.RENAME) }
                 SheetButton(if (hidden) "Unhide" else "Hide") { onAction(SheetAction.TOGGLE_HIDDEN) }
+            }
+            if (inNew || inRecent) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (inNew) SheetButton("Remove from New") { onAction(SheetAction.REMOVE_FROM_NEW) }
+                    if (inRecent) SheetButton("Remove from Recent") { onAction(SheetAction.REMOVE_FROM_RECENT) }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAction(SheetAction.TOGGLE_SHOW_IN_RECENT) }
+                    .padding(vertical = 4.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Show in Recent", fontSize = 15.sp)
+                    if (app.app.isGame) Text("Off by default for games", color = Ui.faint, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = app.showInRecent,
+                    onCheckedChange = { onAction(SheetAction.TOGGLE_SHOW_IN_RECENT) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Ui.accent),
+                )
             }
         }
     }
@@ -119,32 +156,53 @@ private fun RowScope.SheetButton(
     )
 }
 
+/** "today", "yesterday", "5 days ago". */
+fun relativeDays(time: Long, now: Long = System.currentTimeMillis()): String {
+    val days = ((now - time) / Sections.DAY_MS).toInt()
+    return when {
+        days <= 0 -> "today"
+        days == 1 -> "yesterday"
+        else -> "$days days ago"
+    }
+}
+
 @Composable
-fun RenameDialog(app: LauncherApp, onDismiss: () -> Unit, onSave: (String?) -> Unit) {
-    var text by remember { mutableStateOf(app.label) }
+fun RenameDialog(app: LauncherApp, onDismiss: () -> Unit, onSave: (label: String?, words: List<String>) -> Unit) {
+    var name by remember { mutableStateOf(app.label) }
+    var words by remember { mutableStateOf(app.searchWords.joinToString(", ")) }
+    val wordList = { words.split(',').map { it.trim() }.filter { it.isNotEmpty() } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename") },
+        title = { Text("Rename & search words") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
+                    value = name,
+                    onValueChange = { name = it },
                     singleLine = true,
+                    label = { Text("Name") },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 )
                 Text("Original name: ${app.app.label}", color = Ui.dim, fontSize = 13.sp)
+                OutlinedTextField(
+                    value = words,
+                    onValueChange = { words = it },
+                    singleLine = true,
+                    label = { Text("Search words") },
+                    placeholder = { Text("bank, money") },
+                )
+                Text("Separate with commas. Search finds the app by these too.", color = Ui.dim, fontSize = 13.sp)
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                val trimmed = text.trim()
-                onSave(trimmed.takeIf { it.isNotEmpty() && it != app.app.label })
+                val trimmed = name.trim()
+                onSave(trimmed.takeIf { it.isNotEmpty() && it != app.app.label }, wordList())
             }) { Text("Save") }
         },
         dismissButton = {
             Row {
-                if (app.isRenamed) TextButton(onClick = { onSave(null) }) { Text("Reset") }
+                if (app.isRenamed) TextButton(onClick = { onSave(null, wordList()) }) { Text("Reset name") }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },

@@ -37,6 +37,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -61,11 +62,16 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
+import io.github.salihoguz.minlauncher.data.VisitOutcome
 import io.github.salihoguz.minlauncher.domain.Search
 
 @Composable
@@ -75,17 +81,33 @@ fun DrawerScreen(
     onLongPress: (LauncherApp) -> Unit,
     onReorderPinned: (List<String>) -> Unit,
     onWebSearch: (String) -> Unit,
+    onVisitEnd: (VisitOutcome, keyboardClosedFirst: Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val settings = state.settings
     var query by rememberSaveable { mutableStateOf("") }
     val results = remember(query, state.apps) {
-        if (query.isBlank()) emptyList() else Search.filter(state.apps, query) { it.label }
+        if (query.isBlank()) emptyList() else Search.filter(state.apps, query, searchWords = { it.searchWords }) { it.label }
     }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
+
+    // One record per visit: how it ended, and whether the keyboard was put away first.
+    val visit = remember { VisitTracker() }
+    val currentVisitEnd by rememberUpdatedState(onVisitEnd)
+    DisposableEffect(Unit) {
+        onDispose { visit.end(VisitOutcome.NONE, currentVisitEnd) }
+    }
+    fun openFrom(outcome: VisitOutcome): (LauncherApp) -> Unit = { app ->
+        visit.end(outcome, currentVisitEnd)
+        onOpen(app)
+    }
+    val searchWeb: (String) -> Unit = { text ->
+        visit.end(VisitOutcome.WEB, currentVisitEnd)
+        onWebSearch(text)
+    }
 
     BackHandler(onBack = onClose)
 
@@ -93,24 +115,6 @@ fun DrawerScreen(
         if (settings.keyboardOnOpen) {
             focusRequester.requestFocus()
             keyboard?.show()
-        }
-    }
-    // Scrolling the list puts the keyboard away, so you can browse.
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-            if (scrolling) {
-                keyboard?.hide()
-                focusManager.clearFocus()
-            }
-        }
-    }
-    LaunchedEffect(results) {
-        if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) onOpen(results.single())
-    }
-
-    val onEnter = {
-        if (query.isNotBlank()) {
-            if (settings.enterSearchesWeb || results.isEmpty()) onWebSearch(query) else onOpen(results.first())
         }
     }
 
@@ -123,6 +127,27 @@ fun DrawerScreen(
     var keyboardRoom by remember { mutableIntStateOf(0) }
     val room = (imeBottom - navBottom).coerceAtLeast(0)
     SideEffect { if (room > keyboardRoom) keyboardRoom = room }
+    val keyboardUp by rememberUpdatedState(room > 0)
+
+    // Scrolling the list puts the keyboard away, so you can browse.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling) {
+                if (keyboardUp) visit.keyboardClosedFirst = true
+                keyboard?.hide()
+                focusManager.clearFocus()
+            }
+        }
+    }
+    LaunchedEffect(results) {
+        if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) openFrom(VisitOutcome.SEARCH)(results.single())
+    }
+
+    val onEnter = {
+        if (query.isNotBlank()) {
+            if (settings.enterSearchesWeb || results.isEmpty()) searchWeb(query) else openFrom(VisitOutcome.SEARCH)(results.first())
+        }
+    }
 
     Box(
         Modifier
@@ -130,6 +155,7 @@ fun DrawerScreen(
             .background(Color.Black.copy(alpha = settings.drawerDim)),
     ) {
         // Item 0 sits on the search bar; the list grows upward from your thumb.
+        // Sections are emitted bottom-up: items reversed, then their label.
         LazyColumn(
             state = listState,
             reverseLayout = true,
@@ -146,13 +172,27 @@ fun DrawerScreen(
                 .padding(bottom = SearchBarHeight),
         ) {
             if (query.isNotBlank()) {
-                item(key = "web") { WebRow(query) { onWebSearch(query) } }
-                items(results, key = { "result-" + it.key }) { app -> AppRow(app, onOpen, onLongPress) }
+                item(key = "web") { WebRow(query) { searchWeb(query) } }
+                val open = openFrom(VisitOutcome.SEARCH)
+                items(results, key = { "result-" + it.key }) { app -> AppRow(app, open, onLongPress) }
             } else {
                 if (state.pinned.isNotEmpty()) {
-                    item(key = "pinned") { PinnedGrid(state.pinned, onOpen, onLongPress, onReorderPinned) }
+                    item(key = "pinned") {
+                        PinnedGrid(state.pinned, openFrom(VisitOutcome.PINNED), onLongPress, onReorderPinned)
+                    }
                 }
-                items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, onOpen, onLongPress) }
+                if (state.recent.isNotEmpty()) {
+                    val open = openFrom(VisitOutcome.RECENT)
+                    items(state.recent.asReversed(), key = { "recent-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                    item(key = "recent-label") { SectionLabel("Recent") }
+                }
+                if (state.newApps.isNotEmpty()) {
+                    val open = openFrom(VisitOutcome.NEW)
+                    items(state.newApps.asReversed(), key = { "new-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                    item(key = "new-label") { SectionLabel("New") }
+                }
+                val open = openFrom(VisitOutcome.LIST)
+                items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, open, onLongPress) }
                 item(key = "all-label") { SectionLabel("All apps · ${state.apps.size}") }
             }
         }
@@ -166,6 +206,18 @@ fun DrawerScreen(
                 .navigationBarsPadding()
                 .imePadding(),
         )
+    }
+}
+
+/** Remembers how a drawer visit ended; only the first ending counts. */
+private class VisitTracker {
+    var keyboardClosedFirst = false
+    private var ended = false
+
+    fun end(outcome: VisitOutcome, report: (VisitOutcome, Boolean) -> Unit) {
+        if (ended) return
+        ended = true
+        report(outcome, keyboardClosedFirst)
     }
 }
 
@@ -231,7 +283,7 @@ private fun SearchBar(
 private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
     val haptics = LocalHapticFeedback.current
     Text(
-        text = app.label,
+        text = nameWithMarker(app),
         style = Ui.drawerApp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -248,6 +300,14 @@ private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress:
             )
             .padding(vertical = 10.dp),
     )
+}
+
+/** The app's name, with a small ✦ for the first 3 days after install. */
+fun nameWithMarker(app: LauncherApp): AnnotatedString = buildAnnotatedString {
+    append(app.label)
+    if (app.isFresh) {
+        withStyle(SpanStyle(color = Ui.highlight, fontSize = 16.sp)) { append("  ✦") }
+    }
 }
 
 @Composable
