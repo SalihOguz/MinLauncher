@@ -4,6 +4,8 @@ import android.os.Process
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -35,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
+import io.github.salihoguz.minlauncher.domain.Folders
 import io.github.salihoguz.minlauncher.domain.Sections
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -45,7 +48,7 @@ enum class SheetAction {
     REMOVE_FROM_NEW, REMOVE_FROM_RECENT, TOGGLE_SHOW_IN_RECENT,
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppSheet(
     app: LauncherApp,
@@ -54,9 +57,14 @@ fun AppSheet(
     hidden: Boolean,
     inNew: Boolean,
     inRecent: Boolean,
+    folders: List<String>,
     onDismiss: () -> Unit,
     onAction: (SheetAction) -> Unit,
+    onMoveToFolder: (String?) -> Unit,
+    onNewFolder: () -> Unit,
 ) {
+    var picking by remember { mutableStateOf(false) }
+    val suggestion = if (app.folder == null) Folders.suggestion(app.app.category, folders) else null
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val installed = remember(app.app.installedAt) {
         SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(app.app.installedAt))
@@ -71,6 +79,7 @@ fun AppSheet(
         if (app.isRenamed) add("named “${app.app.label}”")
         if (app.app.user != Process.myUserHandle()) add("work profile")
         if (onHome) add("on home") else if (pinned) add("pinned")
+        add(app.folder?.let { "in $it" } ?: "Unsorted")
     }.joinToString(" · ")
 
     ModalBottomSheet(
@@ -87,6 +96,23 @@ fun AppSheet(
         ) {
             Text(app.label, style = Ui.drawerApp.copy(fontSize = 26.sp))
             Text(details, color = Ui.dim, fontSize = 13.sp)
+            if (suggestion != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Ui.highlight.copy(alpha = 0.1f))
+                        .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                ) {
+                    Text(
+                        "Android lists this as ${Folders.categoryName(app.app.category)}. Move to $suggestion?",
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Chip("Move", selected = true) { onMoveToFolder(suggestion) }
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 SheetButton("Open", primary = true) { onAction(SheetAction.OPEN) }
                 SheetButton("App info") { onAction(SheetAction.APP_INFO) }
@@ -99,6 +125,21 @@ fun AppSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetButton("Rename & search words") { onAction(SheetAction.RENAME) }
                 SheetButton(if (hidden) "Unhide" else "Hide") { onAction(SheetAction.TOGGLE_HIDDEN) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SheetButton(if (picking) "Choose a folder" else "Move to folder") { picking = !picking }
+            }
+            if (picking) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    folders.forEach { name ->
+                        Chip(name, selected = name == app.folder) { onMoveToFolder(name) }
+                    }
+                    Chip(Folders.UNSORTED, selected = app.folder == null) { onMoveToFolder(null) }
+                    Chip("+ New folder", selected = false, onClick = onNewFolder)
+                }
             }
             if (inNew || inRecent) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -125,6 +166,54 @@ fun AppSheet(
             }
         }
     }
+}
+
+@Composable
+private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text = text,
+        color = if (selected) Color(0xFF1B1A22) else Ui.text,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Color(0xFFF2F0F6) else Ui.text.copy(alpha = 0.12f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+/** Name a new folder, or rename one. */
+@Composable
+fun FolderNameDialog(
+    title: String,
+    initial: String,
+    existing: List<String>,
+    renaming: String?,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var name by remember { mutableStateOf(initial) }
+    val problem = Folders.problemWithName(name, existing, renaming)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.replace('\n', ' ').take(Folders.MAX_NAME_LENGTH) },
+                    singleLine = true,
+                    label = { Text("Folder name") },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                )
+                if (problem != null && name.isNotBlank()) Text(problem, color = Ui.dim, fontSize = 13.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = problem == null, onClick = { onSave(name.trim()) }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

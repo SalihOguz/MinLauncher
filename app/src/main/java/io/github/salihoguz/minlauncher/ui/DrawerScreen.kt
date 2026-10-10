@@ -3,19 +3,24 @@
 package io.github.salihoguz.minlauncher.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -80,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
 import io.github.salihoguz.minlauncher.data.VisitOutcome
+import io.github.salihoguz.minlauncher.domain.Folders
 import io.github.salihoguz.minlauncher.domain.Search
 
 @Composable
@@ -89,14 +96,22 @@ fun DrawerScreen(
     onLongPress: (LauncherApp) -> Unit,
     onReorderPinned: (List<String>) -> Unit,
     onWebSearch: (String) -> Unit,
+    onNewFolder: () -> Unit,
     onVisitEnd: (VisitOutcome, keyboardClosedFirst: Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     val settings = state.settings
     var query by rememberSaveable { mutableStateOf("") }
+    // A letter picked on the A–Z rail filters the list until you tap empty space or clear.
+    var letter by remember { mutableStateOf<Char?>(null) }
     val results = remember(query, state.apps) {
         if (query.isBlank()) emptyList() else Search.filter(state.apps, query, searchWords = { it.searchWords }) { it.label }
     }
+    val lettered = remember(letter, state.apps) {
+        letter?.let { l -> state.apps.filter { Folders.railLetter(it.label) == l } }.orEmpty()
+    }
+    val availableLetters = remember(state.apps) { state.apps.mapTo(HashSet()) { Folders.railLetter(it.label) } }
+    val expanded = remember { mutableStateListOf<String>() }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -117,7 +132,9 @@ fun DrawerScreen(
         onWebSearch(text)
     }
 
-    BackHandler(onBack = onClose)
+    BackHandler {
+        if (letter != null) letter = null else onClose()
+    }
 
     LaunchedEffect(Unit) {
         if (settings.keyboardOnOpen) {
@@ -150,6 +167,8 @@ fun DrawerScreen(
     LaunchedEffect(results) {
         if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) openFrom(VisitOutcome.SEARCH)(results.single())
     }
+    // Typing replaces a rail filter.
+    LaunchedEffect(query) { if (query.isNotBlank()) letter = null }
 
     val onEnter = {
         if (query.isNotBlank()) {
@@ -171,7 +190,7 @@ fun DrawerScreen(
             reverseLayout = true,
             contentPadding = PaddingValues(
                 start = 24.dp,
-                end = 24.dp,
+                end = if (settings.alphabetRail) 40.dp else 24.dp,
                 top = 8.dp,
                 bottom = with(density) { keyboardRoom.toDp() } + FadeHeight,
             ),
@@ -180,6 +199,8 @@ fun DrawerScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(bottom = SearchBarHeight)
+                // A tap on empty space clears the rail filter; taps on rows never reach here.
+                .pointerInput(Unit) { detectTapGestures { letter = null } }
                 .onGloballyPositioned { listTop = it.positionInRoot().y }
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
@@ -198,34 +219,85 @@ fun DrawerScreen(
                     }
                 },
         ) {
-            if (query.isNotBlank()) {
-                item(key = "web") { WebRow(query) { searchWeb(query) } }
-                val open = openFrom(VisitOutcome.SEARCH)
-                items(results, key = { "result-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-            } else {
-                if (state.pinned.isNotEmpty()) {
-                    item(key = "pinned") {
-                        PinnedGrid(state.pinned, openFrom(VisitOutcome.PINNED), onLongPress, onReorderPinned)
+            val currentLetter = letter
+            when {
+                query.isNotBlank() -> {
+                    item(key = "web") { WebRow(query) { searchWeb(query) } }
+                    val open = openFrom(VisitOutcome.SEARCH)
+                    items(results, key = { "result-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                }
+                currentLetter != null -> {
+                    val open = openFrom(VisitOutcome.RAIL)
+                    if (lettered.isEmpty()) {
+                        item(key = "letter-empty") { Hint("No apps under $currentLetter. Tap empty space to go back.") }
                     }
+                    items(lettered.asReversed(), key = { "letter-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                    item(key = "letter-label") { SectionLabel("Starts with $currentLetter") }
                 }
-                if (state.recent.isNotEmpty()) {
-                    val open = openFrom(VisitOutcome.RECENT)
-                    items(state.recent.asReversed(), key = { "recent-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                    item(key = "recent-label") { SectionLabel("Recent") }
+                else -> {
+                    if (state.pinned.isNotEmpty()) {
+                        item(key = "pinned") {
+                            PinnedGrid(state.pinned, openFrom(VisitOutcome.PINNED), onLongPress, onReorderPinned)
+                        }
+                    }
+                    if (state.recent.isNotEmpty()) {
+                        val open = openFrom(VisitOutcome.RECENT)
+                        items(state.recent.asReversed(), key = { "recent-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                        item(key = "recent-label") { SectionLabel("Recent") }
+                    }
+                    if (state.newApps.isNotEmpty()) {
+                        val open = openFrom(VisitOutcome.NEW)
+                        items(state.newApps.asReversed(), key = { "new-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                        item(key = "new-label") { SectionLabel("New") }
+                    }
+
+                    // Folders, bottom-up: New folder, Unsorted, then the user's folders in reverse.
+                    val openInFolder = openFrom(VisitOutcome.FOLDER)
+                    item(key = "new-folder") { NewFolderRow(onNewFolder) }
+                    if (state.folders.isNotEmpty()) {
+                        val groups = state.folders + FolderGroup(Folders.UNSORTED, state.unsorted)
+                        for (group in groups.asReversed()) {
+                            val isOpen = group.name in expanded
+                            if (isOpen) {
+                                items(group.apps.asReversed(), key = { "f-${group.name}-${it.key}" }) { app ->
+                                    AppRow(app, openInFolder, onLongPress, indent = true)
+                                }
+                            }
+                            item(key = "folder-${group.name}") {
+                                FolderRow(group.name, group.apps.size, isOpen) {
+                                    if (isOpen) expanded.remove(group.name) else expanded.add(group.name)
+                                }
+                            }
+                        }
+                    }
+                    item(key = "folders-label") { SectionLabel("Folders") }
+
+                    val open = openFrom(VisitOutcome.LIST)
+                    items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, open, onLongPress) }
+                    item(key = "all-label") { SectionLabel("All apps · ${state.apps.size}") }
                 }
-                if (state.newApps.isNotEmpty()) {
-                    val open = openFrom(VisitOutcome.NEW)
-                    items(state.newApps.asReversed(), key = { "new-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                    item(key = "new-label") { SectionLabel("New") }
-                }
-                val open = openFrom(VisitOutcome.LIST)
-                items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                item(key = "all-label") { SectionLabel("All apps · ${state.apps.size}") }
             }
         }
+
+        // With the keyboard down, the A–Z rail runs down the right edge.
+        AnimatedVisibility(
+            visible = settings.alphabetRail && !keyboardUp && query.isBlank(),
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(top = 24.dp, bottom = SearchBarHeight + 24.dp, end = 6.dp),
+        ) {
+            AlphabetRail(available = availableLetters, onLetter = { letter = it })
+        }
+
         SearchBar(
             query = query,
             onQueryChange = { query = it },
+            filterLetter = letter,
+            onClearFilter = { letter = null },
             focusRequester = focusRequester,
             onEnter = onEnter,
             modifier = Modifier
@@ -251,11 +323,14 @@ private class VisitTracker {
 
 private val SearchBarHeight = 64.dp
 private val FadeHeight = 28.dp
+private val IconGap = 14.dp
 
 @Composable
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    filterLetter: Char?,
+    onClearFilter: () -> Unit,
     focusRequester: FocusRequester,
     onEnter: () -> Unit,
     modifier: Modifier = Modifier,
@@ -288,13 +363,16 @@ private fun SearchBar(
                         .focusRequester(focusRequester),
                 )
             }
-            if (query.isNotEmpty()) {
+            if (query.isNotEmpty() || filterLetter != null) {
                 Text(
                     text = "clear",
                     color = Ui.dim,
                     fontSize = 14.sp,
                     modifier = Modifier
-                        .clickable { onQueryChange("") }
+                        .clickable {
+                            onQueryChange("")
+                            onClearFilter()
+                        }
                         .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
                 )
             }
@@ -309,13 +387,15 @@ private fun SearchBar(
 }
 
 @Composable
-private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
+private fun AppRow(
+    app: LauncherApp,
+    onOpen: (LauncherApp) -> Unit,
+    onLongPress: (LauncherApp) -> Unit,
+    indent: Boolean = false,
+) {
     val haptics = LocalHapticFeedback.current
-    Text(
-        text = nameWithMarker(app),
-        style = Ui.drawerApp,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
@@ -327,8 +407,55 @@ private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress:
                 },
                 onClick = { onOpen(app) },
             )
+            .padding(start = if (indent) 20.dp else 0.dp, top = 10.dp, bottom = 10.dp),
+    ) {
+        AppIcon(app.app)
+        Spacer(Modifier.width(IconGap))
+        Text(
+            text = nameWithMarker(app),
+            style = Ui.drawerApp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun FolderRow(name: String, count: Int, open: Boolean, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
             .padding(vertical = 10.dp),
-    )
+    ) {
+        FolderGlyph()
+        Spacer(Modifier.width(IconGap))
+        Text(name, style = Ui.drawerApp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Text("  $count", color = Ui.faint, fontSize = 14.sp)
+        Spacer(Modifier.weight(1f))
+        Text(if (open) "⌄" else "›", color = Ui.faint, fontSize = 22.sp)
+    }
+}
+
+@Composable
+private fun NewFolderRow(onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+    ) {
+        PlusGlyph()
+        Spacer(Modifier.width(IconGap))
+        Text("New folder", style = Ui.drawerApp.copy(color = Ui.dim))
+    }
+}
+
+@Composable
+private fun Hint(text: String) {
+    Text(text, color = Ui.dim, fontSize = 15.sp, modifier = Modifier.padding(vertical = 12.dp))
 }
 
 /** The app's name, with a small ✦ for the first 3 days after install. */
@@ -349,16 +476,22 @@ private fun WebRow(query: String, onClick: () -> Unit) {
                 .height(1.dp)
                 .background(Ui.text.copy(alpha = 0.1f)),
         )
-        Text(
-            text = "Search the web for “${query.trim()}”",
-            style = Ui.drawerApp.copy(fontSize = 18.sp, color = Ui.dim),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
                 .padding(vertical = 12.dp),
-        )
+        ) {
+            SearchGlyph()
+            Spacer(Modifier.width(IconGap))
+            Text(
+                text = "Search the web for “${query.trim()}”",
+                style = Ui.drawerApp.copy(fontSize = 18.sp, color = Ui.dim),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

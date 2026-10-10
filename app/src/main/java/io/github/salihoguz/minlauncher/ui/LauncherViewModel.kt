@@ -30,6 +30,10 @@ data class UiState(
     val recent: List<LauncherApp> = emptyList(),
     val newApps: List<LauncherApp> = emptyList(),
     val hidden: List<LauncherApp> = emptyList(),
+    /** User folders with their apps, in the user's order. */
+    val folders: List<FolderGroup> = emptyList(),
+    /** Apps not filed in any folder: the inbox. */
+    val unsorted: List<LauncherApp> = emptyList(),
     val settings: LauncherSettings = LauncherSettings(),
 ) {
     val homeKeys: Set<String> get() = home.mapTo(HashSet()) { it.key }
@@ -37,6 +41,8 @@ data class UiState(
     val newKeys: Set<String> get() = newApps.mapTo(HashSet()) { it.key }
     val homeIsFull: Boolean get() = home.size >= HomeLayout.MAX_APPS
 }
+
+data class FolderGroup(val name: String, val apps: List<LauncherApp>)
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -48,6 +54,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val state: StateFlow<UiState> = combine(repository.apps, store.settings) { installed, settings ->
         if (installed == null) return@combine UiState(settings = settings)
         val now = System.currentTimeMillis()
+        val folderNames = settings.folders.toSet()
         val all = installed.map { app ->
             LauncherApp(
                 app = app,
@@ -56,6 +63,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 lastOpened = settings.lastOpened[app.key],
                 showInRecent = settings.showInRecent[app.key] ?: !app.isGame,
                 isFresh = Sections.isFresh(app.installedAt, now),
+                folder = settings.folderOf[app.key]?.takeIf { it in folderNames },
             )
         }
         val byKey = all.associateBy { it.key }
@@ -83,6 +91,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             recent = Sections.recent(history, settled, settings.recentCount).mapNotNull { byKey[it] },
             newApps = Sections.newApps(history, settings.trackingSince, settled).mapNotNull { byKey[it] },
             hidden = all.filter { it.key in settings.hidden }.sortedWith { a, b -> collator.compare(a.label, b.label) },
+            folders = settings.folders.map { name -> FolderGroup(name, visible.filter { it.folder == name }) },
+            unsorted = visible.filter { it.folder == null },
             settings = settings,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, UiState())
@@ -113,6 +123,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setShowInRecent(key: String, value: Boolean) = save { store.setShowInRecent(key, value) }
     fun removeFromRecent(key: String) = save { store.removeFromRecent(key) }
     fun dismissFromNew(key: String) = save { store.dismissFromNew(key) }
+    fun createFolder(name: String) = save { store.createFolder(name) }
+    fun moveToFolder(key: String, folder: String?) = save { store.moveToFolder(key, folder) }
+    fun renameFolder(old: String, new: String) = save { store.renameFolder(old, new) }
+    fun deleteFolder(name: String) = save { store.deleteFolder(name) }
+    fun moveFolder(name: String, by: Int) = save { store.moveFolder(name, by) }
     fun setClockMode(mode: ClockMode) = save { store.setClockMode(mode) }
     fun setKeyboardOnOpen(value: Boolean) = save { store.setKeyboardOnOpen(value) }
     fun setOpenOnlyMatch(value: Boolean) = save { store.setOpenOnlyMatch(value) }
@@ -120,6 +135,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setDoubleTapToLock(value: Boolean) = save { store.setDoubleTapToLock(value) }
     fun setDrawerDim(value: Float) = save { store.setDrawerDim(value) }
     fun setRecentCount(value: Int) = save { store.setRecentCount(value) }
+    fun setAlphabetRail(value: Boolean) = save { store.setAlphabetRail(value) }
 
     private fun save(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

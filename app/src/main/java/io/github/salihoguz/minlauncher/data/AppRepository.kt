@@ -1,7 +1,6 @@
 package io.github.salihoguz.minlauncher.data
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.os.Handler
 import android.os.Looper
@@ -25,9 +24,9 @@ class AppRepository(private val context: Context, private val scope: CoroutineSc
     val apps: StateFlow<List<InstalledApp>?> = _apps
 
     private val callback = object : LauncherApps.Callback() {
-        override fun onPackageRemoved(packageName: String, user: UserHandle) = refresh()
-        override fun onPackageAdded(packageName: String, user: UserHandle) = refresh()
-        override fun onPackageChanged(packageName: String, user: UserHandle) = refresh()
+        override fun onPackageRemoved(packageName: String, user: UserHandle) = refresh(packageName)
+        override fun onPackageAdded(packageName: String, user: UserHandle) = refresh(packageName)
+        override fun onPackageChanged(packageName: String, user: UserHandle) = refresh(packageName)
         override fun onPackagesAvailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = refresh()
         override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle, replacing: Boolean) = refresh()
     }
@@ -49,7 +48,8 @@ class AppRepository(private val context: Context, private val scope: CoroutineSc
         }
     }
 
-    fun refresh() {
+    fun refresh(changedPackage: String? = null) {
+        if (changedPackage != null) IconCache.forget(changedPackage)
         scope.launch { _apps.value = withContext(Dispatchers.IO) { load() } }
     }
 
@@ -67,7 +67,7 @@ class AppRepository(private val context: Context, private val scope: CoroutineSc
                     component = component,
                     user = user,
                     installedAt = info.firstInstallTime,
-                    isGame = info.applicationInfo.category == ApplicationInfo.CATEGORY_GAME,
+                    category = info.applicationInfo.category,
                 )
             }
         }

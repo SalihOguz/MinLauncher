@@ -53,20 +53,21 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - No live web suggestions while typing.
 - **When not typing,** from the bar upward: Pinned, Recent (v0.2), New (v0.2), Folders (v0.3), All apps A–Z.
 - **Pinned:** two text columns, no icons, hold and drag to reorder. 8 pinned apps take 4 rows.
-- **Icons:** every other drawer row gets a monochrome icon (v0.3, `AdaptiveIconDrawable.getMonochrome()` with a greyscale fallback). Names never shift.
+- **Icons (v0.3):** every drawer row except Pinned gets a small one-colour icon: the app's themed icon in white on Android 13+ (`AdaptiveIconDrawable.getMonochrome()`), otherwise a grey version of its normal icon. Icons are always there, so names never shift.
 - **Search matching,** best first: start of the name, start of any word, the app's search words (`bank` → Halkbank), initials (`kn` → Keep Notes), inside the name (from 3 letters), small typos (from 4 letters: `alrmy` → Alarmy). Ignores symbols and accents (`edevlet` → e-Devlet).
 - Scrolling the list hides the keyboard.
 - **Recent (v0.2):** 5 apps (setting: off, 5, 10), most recently opened from MinLauncher first. Skips apps on home, pinned apps, games, and any app with "Show in Recent" off (per-app switch, off by default for games). "Remove from Recent" hides an app until it's opened again.
 - **New (v0.2):** apps installed after MinLauncher started keeping track, never opened from it; they stay until opened once (or removed, pinned, or put on home). ✦ marker for 3 days after install, wherever the name appears.
-- **Folders (v0.3):** user-created (+ New folder in the drawer and in Move to folder); Unsorted is the inbox; folder suggestion from `ApplicationInfo.category` for unfiled apps.
-- **A–Z rail (v0.3):** when the keyboard is down. Letters bend away from the finger and the list filters to that letter. Tapping empty space clears the filter.
+- **Folders (v0.3):** user-created, from "New folder" in the drawer, "+ New folder" in Move to folder, or Settings. Each folder row shows its app count and opens in place (tap again to close). Unsorted is the inbox: every app without a folder; it shows once the first folder exists. An unfiled app's sheet suggests a folder from `ApplicationInfo.category` (Games, Media, Social, News, Travel, Work), reusing an existing folder of that name. Settings: rename, delete (apps go back to Unsorted), move up/down. Names up to 24 letters; "Unsorted" is taken.
+- **A–Z rail (v0.3):** down the right edge while the keyboard is down and nothing is typed (setting, default on). Letters bend away from the finger, a bubble shows the letter, and the list shows only apps under it (# for names that don't start with A–Z). Tapping empty space, Back, or "clear" brings the full list back; typing replaces the filter.
 - **Hidden apps:** gone from the drawer and search. Listed in Settings (v0.1), later in Library.
 
 ## Long-press sheet
 
 - **v0.1:** install date; Open · App info · Uninstall; Pin/Unpin · Add to/Remove from home · Rename · Hide.
 - **v0.2:** last opened; Rename & search words; Remove from New / Remove from Recent; Show in Recent switch.
-- **Later:** size, folder; Move to folder; folder suggestion.
+- **v0.3:** folder (or Unsorted) in the details line; Move to folder (the folders, Unsorted, + New folder); folder suggestion for unfiled apps.
+- **Later:** size.
 
 ## Manage (v0.4): Library · Stats · Settings
 

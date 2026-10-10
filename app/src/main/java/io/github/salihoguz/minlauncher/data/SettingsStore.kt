@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.salihoguz.minlauncher.domain.ClockMode
+import io.github.salihoguz.minlauncher.domain.Folders
 import io.github.salihoguz.minlauncher.domain.HomeLayout
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -33,6 +34,8 @@ data class LauncherSettings(
     val drawerDim: Float = 0.45f,
     /** How many Recent apps the drawer shows: 0, 5 or 10. */
     val recentCount: Int = 5,
+    /** The A–Z rail down the drawer's right edge. */
+    val alphabetRail: Boolean = true,
     /** When MinLauncher started keeping track. Apps installed after this can be New. */
     val trackingSince: Long = Long.MAX_VALUE,
     /** Last time each app was opened from MinLauncher. */
@@ -42,6 +45,10 @@ data class LauncherSettings(
     /** When each app was removed from Recent. */
     val removedFromRecent: Map<String, Long> = emptyMap(),
     val dismissedFromNew: Set<String> = emptySet(),
+    /** User folders, in the order they show. */
+    val folders: List<String> = emptyList(),
+    /** Which folder each app is in. Apps without one are in Unsorted. */
+    val folderOf: Map<String, String> = emptyMap(),
 )
 
 class SettingsStore(context: Context) {
@@ -54,6 +61,7 @@ class SettingsStore(context: Context) {
         val lastOpened = HashMap<String, Long>()
         val showInRecent = HashMap<String, Boolean>()
         val removed = HashMap<String, Long>()
+        val folderOf = HashMap<String, String>()
         for ((key, value) in p.asMap()) {
             val name = key.name
             when {
@@ -62,6 +70,7 @@ class SettingsStore(context: Context) {
                 name.startsWith(LAST_OPENED) -> (value as? Long)?.let { lastOpened[name.removePrefix(LAST_OPENED)] = it }
                 name.startsWith(SHOW_IN_RECENT) -> (value as? Boolean)?.let { showInRecent[name.removePrefix(SHOW_IN_RECENT)] = it }
                 name.startsWith(REMOVED_FROM_RECENT) -> (value as? Long)?.let { removed[name.removePrefix(REMOVED_FROM_RECENT)] = it }
+                name.startsWith(FOLDER) -> folderOf[name.removePrefix(FOLDER)] = value.toString()
             }
         }
         LauncherSettings(
@@ -77,11 +86,14 @@ class SettingsStore(context: Context) {
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
             drawerDim = p[DRAWER_DIM] ?: 0.45f,
             recentCount = p[RECENT_COUNT] ?: 5,
+            alphabetRail = p[ALPHABET_RAIL] ?: true,
             trackingSince = p[TRACKING_SINCE] ?: Long.MAX_VALUE,
             lastOpened = lastOpened,
             showInRecent = showInRecent,
             removedFromRecent = removed,
             dismissedFromNew = p[DISMISSED_FROM_NEW].orEmpty(),
+            folders = p[FOLDERS].toKeyList(),
+            folderOf = folderOf,
         )
     }
 
@@ -143,6 +155,56 @@ class SettingsStore(context: Context) {
         p[DISMISSED_FROM_NEW] = p[DISMISSED_FROM_NEW].orEmpty() + key
     }
 
+    suspend fun createFolder(name: String) = store.edit { p ->
+        val folders = p[FOLDERS].toKeyList()
+        if (Folders.problemWithName(name, folders) == null) p[FOLDERS] = (folders + name.trim()).joinToString(SEPARATOR)
+    }
+
+    /** Files the app in [folder], creating the folder if needed; null puts it back in Unsorted. */
+    suspend fun moveToFolder(key: String, folder: String?) = store.edit { p ->
+        val prefKey = stringPreferencesKey(FOLDER + key)
+        if (folder == null) {
+            p.remove(prefKey)
+            return@edit
+        }
+        val folders = p[FOLDERS].toKeyList()
+        val existing = folders.firstOrNull { it.equals(folder.trim(), ignoreCase = true) }
+        val name = when {
+            existing != null -> existing
+            Folders.problemWithName(folder, folders) == null -> folder.trim().also { p[FOLDERS] = (folders + it).joinToString(SEPARATOR) }
+            else -> return@edit
+        }
+        p[prefKey] = name
+    }
+
+    suspend fun renameFolder(old: String, new: String) = store.edit { p ->
+        val folders = p[FOLDERS].toKeyList()
+        if (old !in folders || Folders.problemWithName(new, folders, renaming = old) != null) return@edit
+        val name = new.trim()
+        p[FOLDERS] = folders.map { if (it == old) name else it }.joinToString(SEPARATOR)
+        assignmentsTo(p, old).forEach { p[it] = name }
+    }
+
+    /** Removes the folder; its apps go back to Unsorted. */
+    suspend fun deleteFolder(name: String) = store.edit { p ->
+        p[FOLDERS] = (p[FOLDERS].toKeyList() - name).joinToString(SEPARATOR)
+        assignmentsTo(p, name).forEach { p.remove(it) }
+    }
+
+    suspend fun moveFolder(name: String, by: Int) = store.edit { p ->
+        val folders = p[FOLDERS].toKeyList().toMutableList()
+        val from = folders.indexOf(name)
+        val to = (from + by).coerceIn(0, folders.lastIndex)
+        if (from < 0 || from == to) return@edit
+        folders.add(to, folders.removeAt(from))
+        p[FOLDERS] = folders.joinToString(SEPARATOR)
+    }
+
+    private fun assignmentsTo(p: Preferences, folder: String): List<Preferences.Key<String>> =
+        p.asMap().entries
+            .filter { it.key.name.startsWith(FOLDER) && it.value == folder }
+            .map { stringPreferencesKey(it.key.name) }
+
     suspend fun setClockMode(mode: ClockMode) = store.edit { it[CLOCK_MODE] = mode.name }
     suspend fun setKeyboardOnOpen(value: Boolean) = store.edit { it[KEYBOARD_ON_OPEN] = value }
     suspend fun setOpenOnlyMatch(value: Boolean) = store.edit { it[OPEN_ONLY_MATCH] = value }
@@ -150,6 +212,7 @@ class SettingsStore(context: Context) {
     suspend fun setDoubleTapToLock(value: Boolean) = store.edit { it[DOUBLE_TAP_LOCK] = value }
     suspend fun setDrawerDim(value: Float) = store.edit { it[DRAWER_DIM] = value.coerceIn(0f, 0.8f) }
     suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 10) }
+    suspend fun setAlphabetRail(value: Boolean) = store.edit { it[ALPHABET_RAIL] = value }
 
     private fun String?.toKeyList(): List<String> =
         this?.split(SEPARATOR)?.filter { it.isNotBlank() }?.distinct().orEmpty()
@@ -163,6 +226,8 @@ class SettingsStore(context: Context) {
         const val LAST_OPENED = "last:"
         const val SHOW_IN_RECENT = "show_recent:"
         const val REMOVED_FROM_RECENT = "recent_removed:"
+        const val FOLDER = "folder:"
+        val FOLDERS = stringPreferencesKey("folders")
         val HOME = stringPreferencesKey("home")
         val PINNED = stringPreferencesKey("pinned")
         val HIDDEN = stringSetPreferencesKey("hidden")
@@ -174,6 +239,7 @@ class SettingsStore(context: Context) {
         val DOUBLE_TAP_LOCK = booleanPreferencesKey("double_tap_lock")
         val DRAWER_DIM = floatPreferencesKey("drawer_dim")
         val RECENT_COUNT = intPreferencesKey("recent_count")
+        val ALPHABET_RAIL = booleanPreferencesKey("alphabet_rail")
         val TRACKING_SINCE = longPreferencesKey("tracking_since")
     }
 }

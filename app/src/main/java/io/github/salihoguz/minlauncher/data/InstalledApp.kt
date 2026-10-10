@@ -11,9 +11,11 @@ data class InstalledApp(
     val component: ComponentName,
     val user: UserHandle,
     val installedAt: Long,
-    /** The app says it's a game (ApplicationInfo.category). Games stay out of Recent by default. */
-    val isGame: Boolean = false,
+    /** Android's app category (ApplicationInfo.CATEGORY_*), -1 when the app doesn't say. */
+    val category: Int = -1,
 ) {
+    /** Games stay out of Recent by default. */
+    val isGame: Boolean get() = category == 0
     val packageName: String get() = component.packageName
 }
 
@@ -27,6 +29,8 @@ data class LauncherApp(
     val showInRecent: Boolean = !app.isGame,
     /** Installed in the last 3 days: shows a ✦ next to its name. */
     val isFresh: Boolean = false,
+    /** The user folder it's filed in, or null for Unsorted. */
+    val folder: String? = null,
 ) {
     val key: String get() = app.key
     val isRenamed: Boolean get() = label != app.label

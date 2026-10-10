@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** How a drawer visit ended. Feeds the Stats tab (v0.4). */
-enum class VisitOutcome { PINNED, RECENT, NEW, LIST, SEARCH, WEB, NONE }
+enum class VisitOutcome { PINNED, RECENT, NEW, LIST, SEARCH, WEB, FOLDER, RAIL, NONE }
 
 /**
  * A small CSV on the phone: one line per drawer visit, kept for 60 days.

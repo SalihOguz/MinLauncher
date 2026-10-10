@@ -16,16 +16,20 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -34,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -57,6 +62,9 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
     }
+    var creatingFolder by remember { mutableStateOf(false) }
+    var renamingFolder by remember { mutableStateOf<String?>(null) }
+    var deletingFolder by remember { mutableStateOf<FolderGroup?>(null) }
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
@@ -106,6 +114,14 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
         item { Toggle("Open with the keyboard", null, settings.keyboardOnOpen, viewModel::setKeyboardOnOpen) }
         item { DimSlider(settings.drawerDim, viewModel::setDrawerDim) }
         item {
+            Toggle(
+                "A–Z rail",
+                "Down the right edge while the keyboard is down. Slide along it to list the apps under a letter.",
+                settings.alphabetRail,
+                viewModel::setAlphabetRail,
+            )
+        }
+        item {
             Choice(
                 title = "Recent apps",
                 help = "Skips apps on home, pinned apps, and games. Turn it off per app from its long-press menu.",
@@ -129,6 +145,31 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
                 options = listOf("Search the web" to true, "Open top app" to false),
                 selected = settings.enterSearchesWeb,
                 onSelect = viewModel::setEnterSearchesWeb,
+            )
+        }
+
+        item { SectionLabel("Folders") }
+        if (state.folders.isEmpty()) {
+            item { Text("None yet. Apps without a folder sit in Unsorted.", color = Ui.faint, fontSize = 14.sp) }
+        }
+        itemsIndexed(state.folders, key = { _, group -> "folder-" + group.name }) { index, group ->
+            FolderSetting(
+                group = group,
+                canMoveUp = index > 0,
+                canMoveDown = index < state.folders.lastIndex,
+                onMove = { by -> viewModel.moveFolder(group.name, by) },
+                onRename = { renamingFolder = group.name },
+                onDelete = { deletingFolder = group },
+            )
+        }
+        item {
+            Text(
+                "+ New folder",
+                color = Ui.dim,
+                fontSize = 15.sp,
+                modifier = Modifier
+                    .clickable { creatingFolder = true }
+                    .padding(vertical = 8.dp),
             )
         }
 
@@ -177,6 +218,94 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
         item { SectionLabel("About") }
         item { Text("MinLauncher $version", color = Ui.faint, fontSize = 14.sp) }
     }
+
+    if (creatingFolder) {
+        FolderNameDialog(
+            title = "New folder",
+            initial = "",
+            existing = settings.folders,
+            renaming = null,
+            onDismiss = { creatingFolder = false },
+            onSave = { name ->
+                viewModel.createFolder(name)
+                creatingFolder = false
+            },
+        )
+    }
+    renamingFolder?.let { old ->
+        FolderNameDialog(
+            title = "Rename folder",
+            initial = old,
+            existing = settings.folders,
+            renaming = old,
+            onDismiss = { renamingFolder = null },
+            onSave = { name ->
+                viewModel.renameFolder(old, name)
+                renamingFolder = null
+            },
+        )
+    }
+    deletingFolder?.let { group ->
+        val count = group.apps.size
+        AlertDialog(
+            onDismissRequest = { deletingFolder = null },
+            title = { Text("Delete ${group.name}?") },
+            text = {
+                Text(
+                    when (count) {
+                        0 -> "The folder is empty."
+                        1 -> "Its app goes back to Unsorted. Nothing is uninstalled."
+                        else -> "Its $count apps go back to Unsorted. Nothing is uninstalled."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteFolder(group.name)
+                    deletingFolder = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deletingFolder = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun FolderSetting(
+    group: FolderGroup,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMove: (Int) -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .clickable(onClick = onRename)
+                .padding(vertical = 6.dp),
+        ) {
+            Text(group.name, style = Ui.drawerApp.copy(fontSize = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (group.apps.size == 1) "1 app" else "${group.apps.size} apps", color = Ui.faint, fontSize = 13.sp)
+        }
+        SmallAction("↑", enabled = canMoveUp) { onMove(-1) }
+        SmallAction("↓", enabled = canMoveDown) { onMove(1) }
+        SmallAction("Rename", onClick = onRename)
+        SmallAction("Delete", onClick = onDelete)
+    }
+}
+
+@Composable
+private fun SmallAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Text(
+        text = text,
+        color = if (enabled) Ui.dim else Ui.text.copy(alpha = 0.15f),
+        fontSize = 14.sp,
+        modifier = Modifier
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+    )
 }
 
 @Composable

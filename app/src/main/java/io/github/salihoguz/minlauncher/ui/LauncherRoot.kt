@@ -35,6 +35,9 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var sheetKey by rememberSaveable { mutableStateOf<String?>(null) }
     var renameKey by rememberSaveable { mutableStateOf<String?>(null) }
+    // The "New folder" dialog, and the app to file in it when it was opened from an app's menu.
+    var naming by rememberSaveable { mutableStateOf(false) }
+    var namingFor by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Pressing Home while the launcher is open always brings you back to the home screen.
     LaunchedEffect(homePresses) {
@@ -42,6 +45,8 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             screen = Screen.HOME
             sheetKey = null
             renameKey = null
+            naming = false
+            namingFor = null
         }
     }
     // A launcher has nowhere to go back to.
@@ -114,6 +119,10 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                     Actions.webSearch(context, query)
                     screen = Screen.HOME
                 },
+                onNewFolder = {
+                    namingFor = null
+                    naming = true
+                },
                 onVisitEnd = viewModel::recordVisit,
                 onClose = { screen = Screen.HOME },
             )
@@ -134,7 +143,17 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 hidden = hidden,
                 inNew = app.key in state.newKeys,
                 inRecent = app.key in state.recentKeys,
+                folders = state.settings.folders,
                 onDismiss = { sheetKey = null },
+                onMoveToFolder = { folder ->
+                    viewModel.moveToFolder(app.key, folder)
+                    sheetKey = null
+                },
+                onNewFolder = {
+                    sheetKey = null
+                    namingFor = app.key
+                    naming = true
+                },
                 onAction = { action ->
                     sheetKey = null
                     when (action) {
@@ -171,6 +190,25 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 onSave = { label, words ->
                     viewModel.rename(app.key, label, words)
                     renameKey = null
+                },
+            )
+        }
+
+        if (naming) {
+            FolderNameDialog(
+                title = "New folder",
+                initial = "",
+                existing = state.settings.folders,
+                renaming = null,
+                onDismiss = {
+                    naming = false
+                    namingFor = null
+                },
+                onSave = { name ->
+                    val key = namingFor
+                    if (key != null) viewModel.moveToFolder(key, name) else viewModel.createFolder(name)
+                    naming = false
+                    namingFor = null
                 },
             )
         }
