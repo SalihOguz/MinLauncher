@@ -104,7 +104,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 
 ## Getting builds onto the phone
 
-GitHub Actions builds a debug APK on every push. It attaches the APK to a pre-release called `dev-build` and uploads it as a workflow artifact. Every build is signed with the same committed debug key, so a new APK installs over the old one.
+GitHub Actions builds an optimized (R8) APK on every push. It attaches the APK to a pre-release called `dev-build` and uploads it as a workflow artifact. Every build is signed with the same committed key (not a store key), so a new APK installs over the old one.
 
 ## Parked
 

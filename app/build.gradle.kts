@@ -31,9 +31,16 @@ android {
 
     buildTypes {
         release {
+            // Optimized build for daily use; Compose is noticeably slower in debug builds.
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
     }
 
     compileOptions {

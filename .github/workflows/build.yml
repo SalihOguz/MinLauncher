@@ -29,11 +29,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build APK
+        run: ./gradlew --no-daemon assembleRelease
 
       - name: Name the APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk "MinLauncher-${{ github.run_number }}.apk"
+        run: cp app/build/outputs/apk/release/app-release.apk "MinLauncher-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
