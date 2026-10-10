@@ -15,6 +15,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License: GPL-3.0"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/screenshots/home.png" width="19%" alt="Home: the clock, date and weather above eight app names on a gradient wallpaper">
+  <img src="docs/images/screenshots/drawer.png" width="19%" alt="Drawer: apps with small grey icons, the A–Z rail bent around the letter M, and the search bar at the bottom">
+  <img src="docs/images/screenshots/library.png" width="19%" alt="Library: apps with colour icons, sorted by least used, each with when it was last used and its size">
+  <img src="docs/images/screenshots/stats.png" width="19%" alt="Stats: a suggestion to review unused apps, screen time and unlocks today, and how drawer visits ended">
+  <img src="docs/images/screenshots/settings.png" width="19%" alt="Settings: big clock, wallpaper dim, weather line, temperature unit, calendar line and drawer options">
+</p>
+
 ---
 
 MinLauncher keeps the look that made [Olauncher](https://github.com/tanujnotes/Olauncher) popular (app names in light text over your wallpaper, a big clock, nothing else) and fixes what gets in the way when you use a minimal launcher every day:
