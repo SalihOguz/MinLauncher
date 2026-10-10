@@ -189,12 +189,10 @@ class SettingsStore(context: Context) {
                 }
             }.toList()
         }.getOrNull() ?: return false
+        // `key to value` here is DataStore's own Preferences.Pair.
         store.edit { p ->
             p.clear()
-            entries.forEach { (key, value) ->
-                @Suppress("UNCHECKED_CAST")
-                p[key as Preferences.Key<Any>] = value
-            }
+            p.putAll(*entries.toTypedArray())
         }
         return true
     }
