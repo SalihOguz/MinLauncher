@@ -57,16 +57,20 @@ jobs:
           name: MinLauncher-${{ github.run_number }}
           path: MinLauncher-${{ github.run_number }}.apk
 
-      # A version tag (v1.0.0) makes a proper release with the APK and generated notes.
+      # A version tag (v1.0.0) makes a proper release with the APK and generated notes. A release
+      # drafted on GitHub's website for that tag gets the APK added to it instead.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp "MinLauncher-${{ github.run_number }}.apk" "MinLauncher-${GITHUB_REF_NAME}.apk"
-          gh release create "$GITHUB_REF_NAME" "MinLauncher-${GITHUB_REF_NAME}.apk" \
-            --title "MinLauncher ${GITHUB_REF_NAME#v}" \
-            --generate-notes
+          apk="MinLauncher-${GITHUB_REF_NAME}.apk"
+          cp "MinLauncher-${{ github.run_number }}.apk" "$apk"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$apk" --title "MinLauncher ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
 
       # A single rolling pre-release, so the newest APK is always one tap away on the phone.
       - name: Update dev-build release
