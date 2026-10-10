@@ -1,0 +1,144 @@
+package io.github.salihoguz.minlauncher.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.salihoguz.minlauncher.data.LauncherApp
+import io.github.salihoguz.minlauncher.domain.HomeLayout
+import io.github.salihoguz.minlauncher.system.Actions
+import kotlinx.coroutines.flow.Flow
+
+private enum class Screen { HOME, DRAWER, SETTINGS }
+
+@Composable
+fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    var sheetKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var renameKey by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Pressing Home while the launcher is open always brings you back to the home screen.
+    LaunchedEffect(homePresses) {
+        homePresses.collect {
+            screen = Screen.HOME
+            sheetKey = null
+            renameKey = null
+        }
+    }
+    // A launcher has nowhere to go back to.
+    BackHandler(enabled = screen == Screen.HOME) {}
+
+    fun find(key: String?): LauncherApp? =
+        key?.let { k -> state.apps.firstOrNull { it.key == k } ?: state.hidden.firstOrNull { it.key == k } }
+
+    val open: (LauncherApp) -> Unit = { app ->
+        Actions.launch(context, app.app)
+        screen = Screen.HOME
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        HomeScreen(
+            apps = state.home,
+            clockMode = state.settings.clockMode,
+            loaded = state.loaded,
+            actions = HomeActions(
+                onOpen = open,
+                onAppLongPress = { sheetKey = it.key },
+                onReorder = viewModel::reorderHome,
+                onSwipeUp = { screen = Screen.DRAWER },
+                onSwipeDown = { Actions.expandNotifications(context) },
+                onSwipeLeft = { Actions.camera(context) },
+                onSwipeRight = { Actions.dialer(context) },
+                onDoubleTap = {
+                    if (state.settings.doubleTapToLock && !Actions.lockScreen()) {
+                        Actions.toast(context, "Turn on the lock service in Settings to lock with a double-tap")
+                    }
+                },
+                onEmptyLongPress = { screen = Screen.SETTINGS },
+                onClock = { Actions.clock(context) },
+                onDate = { Actions.calendar(context) },
+            ),
+        )
+
+        AnimatedVisibility(
+            visible = screen == Screen.DRAWER,
+            enter = fadeIn() + slideInVertically { it / 12 },
+            exit = fadeOut(),
+        ) {
+            DrawerScreen(
+                state = state,
+                onOpen = open,
+                onLongPress = { sheetKey = it.key },
+                onReorderPinned = viewModel::reorderPinned,
+                onWebSearch = { query ->
+                    Actions.webSearch(context, query)
+                    screen = Screen.HOME
+                },
+                onClose = { screen = Screen.HOME },
+            )
+        }
+
+        AnimatedVisibility(visible = screen == Screen.SETTINGS, enter = fadeIn(), exit = fadeOut()) {
+            SettingsScreen(state = state, viewModel = viewModel, onClose = { screen = Screen.HOME })
+        }
+
+        find(sheetKey)?.let { app ->
+            val onHome = app.key in state.homeKeys
+            val pinned = app.key in state.settings.pinned
+            val hidden = app.key in state.settings.hidden
+            AppSheet(
+                app = app,
+                onHome = onHome,
+                pinned = pinned,
+                hidden = hidden,
+                onDismiss = { sheetKey = null },
+                onAction = { action ->
+                    sheetKey = null
+                    when (action) {
+                        SheetAction.OPEN -> open(app)
+                        SheetAction.APP_INFO -> Actions.appInfo(context, app.app)
+                        SheetAction.UNINSTALL -> Actions.uninstall(context, app.app)
+                        SheetAction.RENAME -> renameKey = app.key
+                        SheetAction.TOGGLE_HIDDEN -> if (hidden) viewModel.unhide(app.key) else viewModel.hide(app.key)
+                        SheetAction.TOGGLE_PIN -> when {
+                            pinned -> viewModel.unpin(app.key)
+                            onHome -> Actions.toast(context, "${app.label} is on home already")
+                            else -> viewModel.pin(app.key)
+                        }
+                        SheetAction.TOGGLE_HOME -> when {
+                            onHome -> viewModel.removeFromHome(app.key)
+                            state.homeIsFull -> Actions.toast(context, "Home is full at ${HomeLayout.MAX_APPS} apps")
+                            else -> viewModel.addToHome(app.key)
+                        }
+                    }
+                },
+            )
+        }
+
+        find(renameKey)?.let { app ->
+            RenameDialog(
+                app = app,
+                onDismiss = { renameKey = null },
+                onSave = { label ->
+                    viewModel.rename(app.key, label)
+                    renameKey = null
+                },
+            )
+        }
+    }
+}

@@ -1,0 +1,372 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
+package io.github.salihoguz.minlauncher.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.salihoguz.minlauncher.data.LauncherApp
+import io.github.salihoguz.minlauncher.domain.Search
+
+@Composable
+fun DrawerScreen(
+    state: UiState,
+    onOpen: (LauncherApp) -> Unit,
+    onLongPress: (LauncherApp) -> Unit,
+    onReorderPinned: (List<String>) -> Unit,
+    onWebSearch: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val settings = state.settings
+    var query by rememberSaveable { mutableStateOf("") }
+    val results = remember(query, state.apps) {
+        if (query.isBlank()) emptyList() else Search.filter(state.apps, query) { it.label }
+    }
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val listState = rememberLazyListState()
+
+    BackHandler(onBack = onClose)
+
+    LaunchedEffect(Unit) {
+        if (settings.keyboardOnOpen) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+    // Scrolling the list puts the keyboard away, so you can browse.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling) {
+                keyboard?.hide()
+                focusManager.clearFocus()
+            }
+        }
+    }
+    LaunchedEffect(results) {
+        if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) onOpen(results.single())
+    }
+
+    val onEnter = {
+        if (query.isNotBlank()) {
+            if (settings.enterSearchesWeb || results.isEmpty()) onWebSearch(query) else onOpen(results.first())
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Ui.scrim)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
+        // Item 0 sits on the search bar; the list grows upward from your thumb.
+        LazyColumn(
+            state = listState,
+            reverseLayout = true,
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            if (query.isNotBlank()) {
+                item(key = "web") { WebRow(query) { onWebSearch(query) } }
+                items(results, key = { "result-" + it.key }) { app -> AppRow(app, onOpen, onLongPress) }
+            } else {
+                if (state.pinned.isNotEmpty()) {
+                    item(key = "pinned") { PinnedGrid(state.pinned, onOpen, onLongPress, onReorderPinned) }
+                }
+                items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, onOpen, onLongPress) }
+                item(key = "all-label") { SectionLabel("All apps · ${state.apps.size}") }
+            }
+        }
+        SearchBar(
+            query = query,
+            onQueryChange = { query = it },
+            focusRequester = focusRequester,
+            onEnter = onEnter,
+        )
+    }
+}
+
+@Composable
+private fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    onEnter: () -> Unit,
+) {
+    Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+        ) {
+            Box(Modifier.weight(1f)) {
+                if (query.isEmpty()) {
+                    Text("Search apps or the web", style = Ui.drawerApp.copy(color = Ui.faint), maxLines = 1)
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = Ui.drawerApp,
+                    cursorBrush = SolidColor(Ui.text),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { onEnter() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                )
+            }
+            if (query.isNotEmpty()) {
+                Text(
+                    text = "clear",
+                    color = Ui.dim,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .clickable { onQueryChange("") }
+                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                )
+            }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Ui.faint),
+        )
+    }
+}
+
+@Composable
+private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Text(
+        text = app.label,
+        style = Ui.drawerApp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongPress(app)
+                },
+                onClick = { onOpen(app) },
+            )
+            .padding(vertical = 9.dp),
+    )
+}
+
+@Composable
+private fun WebRow(query: String, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .height(1.dp)
+                .background(Ui.text.copy(alpha = 0.1f)),
+        )
+        Text(
+            text = "Search the web for “${query.trim()}”",
+            style = Ui.drawerApp.copy(fontSize = 18.sp, color = Ui.dim),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 12.dp),
+        )
+    }
+}
+
+@Composable
+fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = Ui.label,
+        modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
+    )
+}
+
+private const val TAP = 1
+private const val MOVED = 2
+private const val LONG_PRESS = 3
+
+/** Pinned apps in two text columns. Hold and drag to reorder; hold and release for the sheet. */
+@Composable
+private fun PinnedGrid(
+    apps: List<LauncherApp>,
+    onOpen: (LauncherApp) -> Unit,
+    onLongPress: (LauncherApp) -> Unit,
+    onReorder: (List<String>) -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val open by rememberUpdatedState(onOpen)
+    val longPress by rememberUpdatedState(onLongPress)
+    val reorder by rememberUpdatedState(onReorder)
+
+    var order by remember { mutableStateOf(apps) }
+    var dragKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(apps) { if (dragKey == null) order = apps }
+
+    Column(Modifier.fillMaxWidth()) {
+        SectionLabel("Pinned")
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val gap = 12.dp
+            val cellWidth = (maxWidth - gap) / 2
+            val cellHeight = 44.dp
+            val rows = (order.size + 1) / 2
+            val cellWidthPx = with(density) { cellWidth.toPx() }
+            val cellHeightPx = with(density) { cellHeight.toPx() }
+            val gapPx = with(density) { gap.toPx() }
+
+            fun cellAt(pos: Offset, clamp: Boolean): Int? {
+                val column = if (pos.x >= cellWidthPx + gapPx / 2f) 1 else 0
+                val row = (pos.y / cellHeightPx).toInt()
+                val index = row * 2 + column
+                return when {
+                    clamp -> index.coerceIn(0, (order.size - 1).coerceAtLeast(0))
+                    pos.y < 0f || index >= order.size -> null
+                    else -> index
+                }
+            }
+
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(cellHeight * rows)
+                    .pointerInput(cellWidthPx, cellHeightPx) {
+                        val slop = viewConfiguration.touchSlop
+                        val longPressMs = viewConfiguration.longPressTimeoutMillis
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val start = down.position
+                            val hit = cellAt(start, clamp = false) ?: return@awaitEachGesture
+
+                            val outcome = withTimeoutOrNull(longPressMs) {
+                                var result = 0
+                                while (result == 0) {
+                                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                                    result = when {
+                                        change == null || !change.pressed -> TAP
+                                        (change.position - start).getDistance() > slop -> MOVED
+                                        else -> 0
+                                    }
+                                }
+                                result
+                            } ?: LONG_PRESS
+
+                            when (outcome) {
+                                TAP -> order.getOrNull(hit)?.let { open(it) }
+                                MOVED -> Unit // Let the list scroll.
+                                else -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    dragKey = order.getOrNull(hit)?.key
+                                    var from = hit
+                                    var moved = false
+                                    while (true) {
+                                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                        change.consume()
+                                        if (!change.pressed) break
+                                        if ((change.position - start).getDistance() > slop) moved = true
+                                        if (moved) {
+                                            val to = cellAt(change.position, clamp = true) ?: from
+                                            if (to != from && to in order.indices) {
+                                                order = order.toMutableList().apply { add(to, removeAt(from)) }
+                                                from = to
+                                            }
+                                        }
+                                    }
+                                    dragKey = null
+                                    if (moved) reorder(order.map { it.key })
+                                    else order.getOrNull(from)?.let { longPress(it) }
+                                }
+                            }
+                        }
+                    },
+            ) {
+                order.forEachIndexed { index, app ->
+                    key(app.key) {
+                        val x by animateDpAsState((cellWidth + gap) * (index % 2), label = "x")
+                        val y by animateDpAsState(cellHeight * (index / 2), label = "y")
+                        Text(
+                            text = app.label,
+                            style = Ui.drawerApp.copy(color = if (app.key == dragKey) Ui.highlight else Ui.text),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .offset(x = x, y = y)
+                                .width(cellWidth)
+                                .height(cellHeight)
+                                .wrapContentHeight(Alignment.CenterVertically),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MinLauncher</string>
+    <string name="lock_service_label">MinLauncher double-tap to lock</string>
+    <string name="lock_service_description">Lets MinLauncher lock the screen when you double-tap empty space on the home screen. It reads nothing from other apps and sends nothing anywhere.</string>
+</resources>
