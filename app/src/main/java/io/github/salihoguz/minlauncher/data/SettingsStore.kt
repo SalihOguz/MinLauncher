@@ -30,7 +30,7 @@ data class LauncherSettings(
     val enterSearchesWeb: Boolean = true,
     val doubleTapToLock: Boolean = true,
     /** How much the drawer darkens the wallpaper, 0..1. */
-    val drawerDim: Float = 0.3f,
+    val drawerDim: Float = 0.45f,
     /** How many Recent apps the drawer shows: 0, 5 or 10. */
     val recentCount: Int = 5,
     /** When MinLauncher started keeping track. Apps installed after this can be New. */
@@ -75,7 +75,7 @@ class SettingsStore(context: Context) {
             openOnlyMatch = p[OPEN_ONLY_MATCH] ?: false,
             enterSearchesWeb = p[ENTER_SEARCHES_WEB] ?: true,
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
-            drawerDim = p[DRAWER_DIM] ?: 0.3f,
+            drawerDim = p[DRAWER_DIM] ?: 0.45f,
             recentCount = p[RECENT_COUNT] ?: 5,
             trackingSince = p[TRACKING_SINCE] ?: Long.MAX_VALUE,
             lastOpened = lastOpened,

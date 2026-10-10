@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,13 +52,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -149,11 +157,13 @@ fun DrawerScreen(
         }
     }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = settings.drawerDim)),
-    ) {
+    // Where the search bar starts, in screen coordinates. The list fades out just above it,
+    // so names never show through the bar, wherever the keyboard puts it.
+    var barTop by remember { mutableFloatStateOf(Float.POSITIVE_INFINITY) }
+    var listTop by remember { mutableFloatStateOf(0f) }
+
+    // The darkening is drawn by LauncherRoot as its own layer, so it fades in evenly.
+    Box(Modifier.fillMaxSize()) {
         // Item 0 sits on the search bar; the list grows upward from your thumb.
         // Sections are emitted bottom-up: items reversed, then their label.
         LazyColumn(
@@ -163,13 +173,30 @@ fun DrawerScreen(
                 start = 24.dp,
                 end = 24.dp,
                 top = 8.dp,
-                bottom = with(density) { keyboardRoom.toDp() } + 4.dp,
+                bottom = with(density) { keyboardRoom.toDp() } + FadeHeight,
             ),
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(bottom = SearchBarHeight),
+                .padding(bottom = SearchBarHeight)
+                .onGloballyPositioned { listTop = it.positionInRoot().y }
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    val edge = barTop - listTop
+                    if (edge < size.height) {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.Black,
+                                1f to Color.Transparent,
+                                startY = edge - FadeHeight.toPx(),
+                                endY = edge,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    }
+                },
         ) {
             if (query.isNotBlank()) {
                 item(key = "web") { WebRow(query) { searchWeb(query) } }
@@ -204,7 +231,8 @@ fun DrawerScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .imePadding(),
+                .imePadding()
+                .onGloballyPositioned { barTop = it.positionInRoot().y },
         )
     }
 }
@@ -222,6 +250,7 @@ private class VisitTracker {
 }
 
 private val SearchBarHeight = 64.dp
+private val FadeHeight = 28.dp
 
 @Composable
 private fun SearchBar(

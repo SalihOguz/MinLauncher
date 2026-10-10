@@ -2,6 +2,8 @@ package io.github.salihoguz.minlauncher.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -14,6 +16,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.salihoguz.minlauncher.data.LauncherApp
@@ -54,7 +58,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
 
     Box(Modifier.fillMaxSize()) {
         // Home fades out while the drawer or settings are open, so its text never shows through.
-        AnimatedVisibility(visible = screen == Screen.HOME, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(visible = screen == Screen.HOME, enter = fadeIn(tween(220)), exit = fadeOut(tween(160))) {
             HomeScreen(
                 apps = state.home,
                 clockMode = state.settings.clockMode,
@@ -79,10 +83,27 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             )
         }
 
+        // One full-screen darkening layer that fades with the screen change. Kept apart from the
+        // drawer's content (which also slides a little) so the whole screen darkens evenly.
+        val dim by animateFloatAsState(
+            targetValue = when (screen) {
+                Screen.HOME -> 0f
+                Screen.DRAWER -> state.settings.drawerDim
+                Screen.SETTINGS -> 0.6f
+            },
+            animationSpec = tween(durationMillis = 220),
+            label = "dim",
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawBehind { drawRect(Color.Black.copy(alpha = dim)) },
+        )
+
         AnimatedVisibility(
             visible = screen == Screen.DRAWER,
-            enter = fadeIn() + slideInVertically { it / 12 },
-            exit = fadeOut(),
+            enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 24 },
+            exit = fadeOut(tween(160)),
         ) {
             DrawerScreen(
                 state = state,

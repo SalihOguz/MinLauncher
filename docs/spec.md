@@ -45,7 +45,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 
 - One screen; the keyboard is up or down. **Opens with the keyboard up** (setting, default on).
 - The list never resizes with the keyboard. The keyboard and search bar float over it, and the keyboard's room is kept for the whole visit, so closing the keyboard never moves an app under your finger. Home fades out while the drawer is open.
-- Names are 26 sp with the home screen's soft shadow, rows about 50 dp. Background dim is a setting (default 30%).
+- Names are 26 sp with the home screen's soft shadow, rows about 50 dp. Background dim is a setting (default 45%); it fades in as one full-screen layer. The list fades out just above the search bar, so names never show through it.
 - The list grows upward from the search bar, which sits above the keyboard.
 - **While typing:** from the bar upward, "Search Brave for …", then matching apps, best match right above the web row.
 - **Enter is a search key and always searches the web** (setting: open the top app instead). Web search opens Brave with its own search engine, or the default browser with Brave Search if Brave isn't installed.
@@ -89,7 +89,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Drawer | Only match opens itself | off | v0.1 |
 | Drawer | Enter key: web search / top app | web search | v0.1 |
 | Drawer | Recent: off / 5 / 10 | 5 | v0.2 |
-| Drawer | Background dim | 30% | v0.1 |
+| Drawer | Background dim | 45% | v0.1 |
 | Drawer | A–Z rail | on | v0.3 |
 | Apps | Hidden apps | — | v0.1 |
 | Apps | Folders, renamed apps and search words, apps that skip Recent | games skip Recent | v0.2–v0.3 |
