@@ -99,6 +99,18 @@ object Actions {
         "Couldn't open App info",
     )
 
+    /** Android's usage access page, on MinLauncher's own entry where the phone supports it. */
+    fun usageAccess(context: Context) {
+        val direct = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        try {
+            context.startActivity(direct.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: ActivityNotFoundException) {
+            start(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), "Couldn't open usage access settings")
+        } catch (e: SecurityException) {
+            start(context, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), "Couldn't open usage access settings")
+        }
+    }
+
     fun homeSettings(context: Context) = start(context, Intent(Settings.ACTION_HOME_SETTINGS), "Couldn't open home app settings")
 
     fun isDefaultLauncher(context: Context): Boolean {

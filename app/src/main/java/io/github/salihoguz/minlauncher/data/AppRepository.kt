@@ -1,6 +1,7 @@
 package io.github.salihoguz.minlauncher.data
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
 import android.os.Handler
 import android.os.Looper
@@ -68,6 +69,7 @@ class AppRepository(private val context: Context, private val scope: CoroutineSc
                     user = user,
                     installedAt = info.firstInstallTime,
                     category = info.applicationInfo.category,
+                    isSystem = info.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 )
             }
         }

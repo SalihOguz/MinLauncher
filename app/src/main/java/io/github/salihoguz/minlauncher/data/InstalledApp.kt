@@ -13,6 +13,8 @@ data class InstalledApp(
     val installedAt: Long,
     /** Android's app category (ApplicationInfo.CATEGORY_*), -1 when the app doesn't say. */
     val category: Int = -1,
+    /** Came with the phone: can be disabled in App info, not uninstalled. */
+    val isSystem: Boolean = false,
 ) {
     /** Games stay out of Recent by default. */
     val isGame: Boolean get() = category == 0

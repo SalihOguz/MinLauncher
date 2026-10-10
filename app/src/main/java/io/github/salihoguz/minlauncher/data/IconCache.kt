@@ -17,14 +17,20 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
 /**
- * Small one-colour icons for the drawer. Apps that ship a themed (monochrome) icon layer,
- * Android 13+, get it drawn in white; the rest get a grey version of their normal icon.
+ * App icons as small bitmaps. The drawer uses one-colour icons: apps that ship a themed
+ * (monochrome) icon layer, Android 13+, get it drawn in white; the rest get a grey version of
+ * their normal icon. Library uses the full-colour icon.
  */
 object IconCache {
 
-    private val cache = LruCache<String, ImageBitmap>(500)
+    // Sized in bytes: about 16 MB, enough for every icon of a full phone in both styles.
+    private val cache = object : LruCache<String, ImageBitmap>(16 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+    }
 
-    fun peek(key: String): ImageBitmap? = cache.get(key)
+    fun peek(key: String, color: Boolean = false): ImageBitmap? = cache.get(cacheKey(key, color))
+
+    private fun cacheKey(key: String, color: Boolean) = if (color) "$key#color" else key
 
     /** Drops cached icons of a package that was installed, updated or removed. */
     fun forget(packageName: String) {
@@ -32,8 +38,9 @@ object IconCache {
     }
 
     /** Loads (or reuses) the icon. Call off the main thread. */
-    fun load(context: Context, app: InstalledApp, sizePx: Int): ImageBitmap? {
-        cache.get(app.key)?.let { return it }
+    fun load(context: Context, app: InstalledApp, sizePx: Int, color: Boolean = false): ImageBitmap? {
+        val cacheKey = cacheKey(app.key, color)
+        cache.get(cacheKey)?.let { return it }
         val launcherApps = context.getSystemService(LauncherApps::class.java)
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(app.component)
         val icon = runCatching { launcherApps.resolveActivity(intent, app.user)?.getIcon(0)?.mutate() }.getOrNull()
@@ -41,8 +48,11 @@ object IconCache {
 
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val monochrome = if (Build.VERSION.SDK_INT >= 33 && icon is AdaptiveIconDrawable) icon.monochrome?.mutate() else null
-        if (monochrome != null) {
+        val monochrome = if (!color && Build.VERSION.SDK_INT >= 33 && icon is AdaptiveIconDrawable) icon.monochrome?.mutate() else null
+        if (color) {
+            icon.setBounds(0, 0, sizePx, sizePx)
+            icon.draw(canvas)
+        } else if (monochrome != null) {
             // Adaptive icon layers are 108 dp; the visible icon is the middle 72 dp.
             val inset = sizePx / 4
             monochrome.setBounds(-inset, -inset, sizePx + inset, sizePx + inset)
@@ -53,6 +63,6 @@ object IconCache {
             icon.colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
             icon.draw(canvas)
         }
-        return bitmap.asImageBitmap().also { cache.put(app.key, it) }
+        return bitmap.asImageBitmap().also { cache.put(cacheKey, it) }
     }
 }

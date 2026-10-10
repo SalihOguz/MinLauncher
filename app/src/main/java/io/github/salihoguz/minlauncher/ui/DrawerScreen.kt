@@ -85,18 +85,19 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
-import io.github.salihoguz.minlauncher.data.VisitOutcome
 import io.github.salihoguz.minlauncher.domain.Folders
 import io.github.salihoguz.minlauncher.domain.Search
+import io.github.salihoguz.minlauncher.domain.VisitOutcome
 
 @Composable
 fun DrawerScreen(
     state: UiState,
-    onOpen: (LauncherApp) -> Unit,
+    onOpen: (LauncherApp, VisitOutcome) -> Unit,
     onLongPress: (LauncherApp) -> Unit,
     onReorderPinned: (List<String>) -> Unit,
     onWebSearch: (String) -> Unit,
     onNewFolder: () -> Unit,
+    onManage: () -> Unit,
     onVisitEnd: (VisitOutcome, keyboardClosedFirst: Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -125,7 +126,7 @@ fun DrawerScreen(
     }
     fun openFrom(outcome: VisitOutcome): (LauncherApp) -> Unit = { app ->
         visit.end(outcome, currentVisitEnd)
-        onOpen(app)
+        onOpen(app, outcome)
     }
     val searchWeb: (String) -> Unit = { text ->
         visit.end(VisitOutcome.WEB, currentVisitEnd)
@@ -300,6 +301,7 @@ fun DrawerScreen(
             onClearFilter = { letter = null },
             focusRequester = focusRequester,
             onEnter = onEnter,
+            onManage = onManage,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -333,6 +335,7 @@ private fun SearchBar(
     onClearFilter: () -> Unit,
     focusRequester: FocusRequester,
     onEnter: () -> Unit,
+    onManage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -374,6 +377,13 @@ private fun SearchBar(
                             onClearFilter()
                         }
                         .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                )
+            } else {
+                // Library, Stats and Settings.
+                ManageGlyph(
+                    Modifier
+                        .clickable(onClick = onManage)
+                        .padding(start = 14.dp, end = 2.dp, top = 10.dp, bottom = 10.dp),
                 )
             }
         }

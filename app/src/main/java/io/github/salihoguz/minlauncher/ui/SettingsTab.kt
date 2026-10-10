@@ -1,6 +1,7 @@
 package io.github.salihoguz.minlauncher.ui
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,12 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -46,13 +44,15 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.salihoguz.minlauncher.LockService
 import io.github.salihoguz.minlauncher.domain.ClockMode
 import io.github.salihoguz.minlauncher.system.Actions
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @Composable
-fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> Unit) {
+fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, onShowHidden: () -> Unit) {
     val context = LocalContext.current
     val settings = state.settings
-    BackHandler(onBack = onClose)
 
     // Re-check things that change outside the app (default launcher, lock service) on return.
     var resumes by remember { mutableIntStateOf(0) }
@@ -65,29 +65,26 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
     var creatingFolder by remember { mutableStateOf(false) }
     var renamingFolder by remember { mutableStateOf<String?>(null) }
     var deletingFolder by remember { mutableStateOf<FolderGroup?>(null) }
+    var confirmingImport by remember { mutableStateOf(false) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xF2121118))
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Settings", style = Ui.drawerApp.copy(fontSize = 32.sp), modifier = Modifier.weight(1f))
-                Text(
-                    "Done",
-                    color = Ui.dim,
-                    fontSize = 16.sp,
-                    modifier = Modifier
-                        .clickable(onClick = onClose)
-                        .padding(8.dp),
-                )
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            viewModel.exportSettings(uri) { ok -> Actions.toast(context, if (ok) "Settings saved" else "Couldn't save the file") }
+        }
+    }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            viewModel.importSettings(uri) { ok ->
+                Actions.toast(context, if (ok) "Settings restored" else "That file isn't a MinLauncher backup")
             }
         }
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
 
         if (!isDefault) {
             item {
@@ -196,23 +193,48 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
             }
         }
 
-        item { SectionLabel("Hidden apps") }
-        if (state.hidden.isEmpty()) {
-            item { Text("None. Hide apps from their long-press menu.", color = Ui.faint, fontSize = 14.sp) }
-        } else {
-            items(state.hidden, key = { "hidden-" + it.key }) { app ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(app.label, style = Ui.drawerApp.copy(fontSize = 18.sp), modifier = Modifier.weight(1f))
-                    Text(
-                        "Unhide",
-                        color = Ui.dim,
-                        fontSize = 14.sp,
-                        modifier = Modifier
-                            .clickable { viewModel.unhide(app.key) }
-                            .padding(8.dp),
-                    )
-                }
-            }
+        item { SectionLabel("Apps") }
+        item {
+            LinkRow(
+                title = "Hidden apps",
+                help = "Gone from the drawer and search. Unhide them from Library.",
+                value = "${state.hidden.size} ›",
+                onClick = onShowHidden,
+            )
+        }
+
+        item { SectionLabel("Data") }
+        item {
+            LinkRow(
+                title = "Usage access",
+                help = if (data.usageAccess) {
+                    "Library and Stats use Android's records of app use. Turn off in Android's settings."
+                } else {
+                    "For screen time, unlocks, full app sizes, and apps unused for 60+ days. " +
+                        "Without it, only opens from MinLauncher count."
+                },
+                value = if (data.usageAccess) "On" else "Off ›",
+                onClick = { Actions.usageAccess(context) },
+            )
+        }
+        item {
+            LinkRow(
+                title = "Export settings",
+                help = "Home, pinned apps, folders, names, search words and settings, as one file.",
+                value = "›",
+                onClick = {
+                    val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                    exporter.launch("minlauncher-settings-$date.json")
+                },
+            )
+        }
+        item {
+            LinkRow(
+                title = "Import settings",
+                help = "Replaces everything with a file from Export settings.",
+                value = "›",
+                onClick = { confirmingImport = true },
+            )
         }
 
         item { SectionLabel("About") }
@@ -245,6 +267,20 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
             },
         )
     }
+    if (confirmingImport) {
+        AlertDialog(
+            onDismissRequest = { confirmingImport = false },
+            title = { Text("Replace your settings?") },
+            text = { Text("Home, pinned apps, folders, names and every setting are replaced by the file you pick.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingImport = false
+                    importer.launch(arrayOf("*/*"))
+                }) { Text("Pick a file") }
+            },
+            dismissButton = { TextButton(onClick = { confirmingImport = false }) { Text("Cancel") } },
+        )
+    }
     deletingFolder?.let { group ->
         val count = group.apps.size
         AlertDialog(
@@ -267,6 +303,24 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
             },
             dismissButton = { TextButton(onClick = { deletingFolder = null }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun LinkRow(title: String, help: String?, value: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Ui.text, fontSize = 16.sp)
+            if (help != null) Text(help, color = Ui.faint, fontSize = 13.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(value, color = Ui.dim, fontSize = 15.sp)
     }
 }
 

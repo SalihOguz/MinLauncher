@@ -1,23 +1,36 @@
 package io.github.salihoguz.minlauncher.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.salihoguz.minlauncher.data.AppRepository
+import io.github.salihoguz.minlauncher.data.LaunchLog
 import io.github.salihoguz.minlauncher.data.LauncherApp
 import io.github.salihoguz.minlauncher.data.LauncherSettings
 import io.github.salihoguz.minlauncher.data.SettingsStore
+import io.github.salihoguz.minlauncher.data.Usage
 import io.github.salihoguz.minlauncher.data.VisitLog
-import io.github.salihoguz.minlauncher.data.VisitOutcome
 import io.github.salihoguz.minlauncher.domain.AppHistory
 import io.github.salihoguz.minlauncher.domain.ClockMode
+import io.github.salihoguz.minlauncher.domain.DayUsage
 import io.github.salihoguz.minlauncher.domain.HomeLayout
+import io.github.salihoguz.minlauncher.domain.Launch
+import io.github.salihoguz.minlauncher.domain.LaunchSource
 import io.github.salihoguz.minlauncher.domain.Sections
+import io.github.salihoguz.minlauncher.domain.Visit
+import io.github.salihoguz.minlauncher.domain.VisitOutcome
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.Collator
 
 data class UiState(
@@ -44,11 +57,32 @@ data class UiState(
 
 data class FolderGroup(val name: String, val apps: List<LauncherApp>)
 
+/** What Library and Stats show. Loaded when the Manage screen opens. */
+data class ManageData(
+    val loaded: Boolean = false,
+    val usageAccess: Boolean = false,
+    /** Package -> last time used, from Android's records (usage access only). */
+    val lastUsed: Map<String, Long> = emptyMap(),
+    /** Package -> time on screen in the last 30 days (usage access only). */
+    val screenTime30d: Map<String, Long> = emptyMap(),
+    val today: DayUsage? = null,
+    /** App key -> bytes. Filled in after the rest, since it takes a moment. */
+    val sizes: Map<String, Long> = emptyMap(),
+    val visits: List<Visit> = emptyList(),
+    val launches: List<Launch> = emptyList(),
+)
+
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AppRepository(application, viewModelScope)
     private val store = SettingsStore(application)
     private val visits = VisitLog(application)
+    private val launches = LaunchLog(application)
+    private val usage = Usage(application)
+
+    private val _manage = MutableStateFlow(ManageData())
+    val manage: StateFlow<ManageData> = _manage
+    private var manageJob: Job? = null
     private val collator = Collator.getInstance()
 
     val state: StateFlow<UiState> = combine(repository.apps, store.settings) { installed, settings ->
@@ -104,7 +138,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun start() = repository.start()
     fun stop() = repository.stop()
 
-    fun recordLaunch(key: String) = save { store.recordLaunch(key) }
+    fun recordLaunch(key: String, source: LaunchSource) = save {
+        store.recordLaunch(key)
+        launches.record(key, source)
+    }
     fun recordVisit(outcome: VisitOutcome, keyboardClosedFirst: Boolean) = save { visits.record(outcome, keyboardClosedFirst) }
 
     fun reorderHome(keys: List<String>) = save { store.setHome(keys) }
@@ -135,6 +172,75 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setDoubleTapToLock(value: Boolean) = save { store.setDoubleTapToLock(value) }
     fun setDrawerDim(value: Float) = save { store.setDrawerDim(value) }
     fun setRecentCount(value: Int) = save { store.setRecentCount(value) }
+    fun snoozeSuggestion(id: String) = save { store.snoozeSuggestion(id) }
+
+    /** Moves a home app into Pinned. */
+    fun moveHomeToPinned(key: String) = save {
+        store.removeFromHome(key)
+        store.pin(key)
+    }
+
+    /** Reloads usage records, logs and sizes for Library and Stats. */
+    fun refreshManage() {
+        manageJob?.cancel()
+        manageJob = viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val loaded = withContext(Dispatchers.IO) {
+                val access = usage.hasAccess()
+                ManageData(
+                    loaded = true,
+                    usageAccess = access,
+                    lastUsed = if (access) usage.lastUsed(now) else emptyMap(),
+                    screenTime30d = if (access) usage.foregroundTime(now - 30 * Sections.DAY_MS, now) else emptyMap(),
+                    today = if (access) usage.today(now) else null,
+                    visits = visits.read(),
+                    launches = launches.read(),
+                )
+            }
+            // Sizes change slowly: keep the ones already known if usage access hasn't changed.
+            val previous = _manage.value
+            val known = if (previous.usageAccess == loaded.usageAccess) previous.sizes else emptyMap()
+            _manage.value = loaded.copy(sizes = known)
+            val apps = (state.value.apps + state.value.hidden).map { it.app }
+            val appKeys = apps.mapTo(HashSet()) { it.key }
+            val missing = apps.filter { it.key !in known }
+            val sizes = HashMap(known.filterKeys { it in appKeys })
+            withContext(Dispatchers.IO) {
+                missing.chunked(20).forEach { chunk ->
+                    ensureActive()
+                    chunk.forEach { app -> usage.size(app, loaded.usageAccess)?.let { sizes[app.key] = it } }
+                    val snapshot = HashMap(sizes)
+                    _manage.update { it.copy(sizes = snapshot) }
+                }
+            }
+            _manage.update { it.copy(sizes = HashMap(sizes)) }
+        }
+    }
+
+    /** Writes a backup to [uri]. Reports success. */
+    fun exportSettings(uri: Uri, done: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = runCatching {
+                val json = store.exportJson()
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toByteArray()) }
+                }
+            }.isSuccess
+            done(ok)
+        }
+    }
+
+    /** Replaces all settings with the backup at [uri]. Reports success. */
+    fun importSettings(uri: Uri, done: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val text = runCatching {
+                withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+                }
+            }.getOrNull()
+            done(text != null && store.importJson(text))
+        }
+    }
     fun setAlphabetRail(value: Boolean) = save { store.setAlphabetRail(value) }
 
     private fun save(block: suspend () -> Unit) {

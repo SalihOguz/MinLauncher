@@ -1,6 +1,7 @@
 package io.github.salihoguz.minlauncher.ui
 
 import android.os.Process
+import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -58,11 +60,13 @@ fun AppSheet(
     inNew: Boolean,
     inRecent: Boolean,
     folders: List<String>,
+    size: Long?,
     onDismiss: () -> Unit,
     onAction: (SheetAction) -> Unit,
     onMoveToFolder: (String?) -> Unit,
     onNewFolder: () -> Unit,
 ) {
+    val context = LocalContext.current
     var picking by remember { mutableStateOf(false) }
     val suggestion = if (app.folder == null) Folders.suggestion(app.app.category, folders) else null
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -77,6 +81,8 @@ fun AppSheet(
         add("Installed $installed")
         add(opened)
         if (app.isRenamed) add("named “${app.app.label}”")
+        size?.let { add(Formatter.formatShortFileSize(context, it)) }
+        if (app.app.isSystem) add("came with the phone")
         if (app.app.user != Process.myUserHandle()) add("work profile")
         if (onHome) add("on home") else if (pinned) add("pinned")
         add(app.folder?.let { "in $it" } ?: "Unsorted")
@@ -116,7 +122,7 @@ fun AppSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 SheetButton("Open", primary = true) { onAction(SheetAction.OPEN) }
                 SheetButton("App info") { onAction(SheetAction.APP_INFO) }
-                SheetButton("Uninstall", danger = true) { onAction(SheetAction.UNINSTALL) }
+                SheetButton(if (app.app.isSystem) "Disable" else "Uninstall", danger = true) { onAction(SheetAction.UNINSTALL) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SheetButton(if (pinned) "Unpin from drawer" else "Pin in drawer") { onAction(SheetAction.TOGGLE_PIN) }
@@ -169,7 +175,7 @@ fun AppSheet(
 }
 
 @Composable
-private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = text,
         color = if (selected) Color(0xFF1B1A22) else Ui.text,

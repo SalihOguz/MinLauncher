@@ -22,17 +22,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.salihoguz.minlauncher.data.LauncherApp
 import io.github.salihoguz.minlauncher.domain.HomeLayout
+import io.github.salihoguz.minlauncher.domain.LaunchSource
 import io.github.salihoguz.minlauncher.system.Actions
 import kotlinx.coroutines.flow.Flow
 
-private enum class Screen { HOME, DRAWER, SETTINGS }
+private enum class Screen { HOME, DRAWER, MANAGE }
 
 @Composable
 fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val manage by viewModel.manage.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    var manageTab by rememberSaveable { mutableStateOf(ManageTab.LIBRARY) }
+    var libraryFilter by rememberSaveable { mutableStateOf(LibraryFilter.ALL) }
     var sheetKey by rememberSaveable { mutableStateOf<String?>(null) }
     var renameKey by rememberSaveable { mutableStateOf<String?>(null) }
     // The "New folder" dialog, and the app to file in it when it was opened from an app's menu.
@@ -55,10 +59,15 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     fun find(key: String?): LauncherApp? =
         key?.let { k -> state.apps.firstOrNull { it.key == k } ?: state.hidden.firstOrNull { it.key == k } }
 
-    val open: (LauncherApp) -> Unit = { app ->
+    val open: (LauncherApp, LaunchSource) -> Unit = { app, source ->
         Actions.launch(context, app.app)
-        viewModel.recordLaunch(app.key)
+        viewModel.recordLaunch(app.key, source)
         screen = Screen.HOME
+    }
+    fun openManage(tab: ManageTab) {
+        manageTab = tab
+        if (tab == ManageTab.LIBRARY) libraryFilter = LibraryFilter.ALL
+        screen = Screen.MANAGE
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -69,7 +78,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 clockMode = state.settings.clockMode,
                 loaded = state.loaded,
                 actions = HomeActions(
-                    onOpen = open,
+                    onOpen = { open(it, LaunchSource.HOME) },
                     onAppLongPress = { sheetKey = it.key },
                     onReorder = viewModel::reorderHome,
                     onSwipeUp = { screen = Screen.DRAWER },
@@ -81,7 +90,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                             Actions.toast(context, "Turn on the lock service in Settings to lock with a double-tap")
                         }
                     },
-                    onEmptyLongPress = { screen = Screen.SETTINGS },
+                    onEmptyLongPress = { openManage(ManageTab.SETTINGS) },
                     onClock = { Actions.clock(context) },
                     onDate = { Actions.calendar(context) },
                 ),
@@ -94,7 +103,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             targetValue = when (screen) {
                 Screen.HOME -> 0f
                 Screen.DRAWER -> state.settings.drawerDim
-                Screen.SETTINGS -> 0.6f
+                Screen.MANAGE -> 0.6f
             },
             animationSpec = tween(durationMillis = 220),
             label = "dim",
@@ -112,7 +121,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
         ) {
             DrawerScreen(
                 state = state,
-                onOpen = open,
+                onOpen = { app, outcome -> open(app, LaunchSource.of(outcome)) },
                 onLongPress = { sheetKey = it.key },
                 onReorderPinned = viewModel::reorderPinned,
                 onWebSearch = { query ->
@@ -123,13 +132,23 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                     namingFor = null
                     naming = true
                 },
+                onManage = { openManage(ManageTab.LIBRARY) },
                 onVisitEnd = viewModel::recordVisit,
                 onClose = { screen = Screen.HOME },
             )
         }
 
-        AnimatedVisibility(visible = screen == Screen.SETTINGS, enter = fadeIn(), exit = fadeOut()) {
-            SettingsScreen(state = state, viewModel = viewModel, onClose = { screen = Screen.HOME })
+        AnimatedVisibility(visible = screen == Screen.MANAGE, enter = fadeIn(), exit = fadeOut()) {
+            ManageScreen(
+                state = state,
+                viewModel = viewModel,
+                tab = manageTab,
+                onTab = { manageTab = it },
+                filter = libraryFilter,
+                onFilter = { libraryFilter = it },
+                onAppDetails = { sheetKey = it.key },
+                onClose = { screen = Screen.HOME },
+            )
         }
 
         find(sheetKey)?.let { app ->
@@ -144,6 +163,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 inNew = app.key in state.newKeys,
                 inRecent = app.key in state.recentKeys,
                 folders = state.settings.folders,
+                size = manage.sizes[app.key],
                 onDismiss = { sheetKey = null },
                 onMoveToFolder = { folder ->
                     viewModel.moveToFolder(app.key, folder)
@@ -157,9 +177,10 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 onAction = { action ->
                     sheetKey = null
                     when (action) {
-                        SheetAction.OPEN -> open(app)
+                        SheetAction.OPEN -> open(app, LaunchSource.SHEET)
                         SheetAction.APP_INFO -> Actions.appInfo(context, app.app)
-                        SheetAction.UNINSTALL -> Actions.uninstall(context, app.app)
+                        // Apps that came with the phone can only be disabled, in App info.
+                        SheetAction.UNINSTALL -> if (app.app.isSystem) Actions.appInfo(context, app.app) else Actions.uninstall(context, app.app)
                         SheetAction.RENAME -> renameKey = app.key
                         SheetAction.TOGGLE_HIDDEN -> if (hidden) viewModel.unhide(app.key) else viewModel.hide(app.key)
                         SheetAction.REMOVE_FROM_NEW -> viewModel.dismissFromNew(app.key)

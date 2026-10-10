@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- Swipe down opens the notification shade. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- Library and Stats: app use, screen time and sizes. Granted by the user in Android's
+         usage access settings; everything works without it. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <!-- Tapping the clock opens the alarm app. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 

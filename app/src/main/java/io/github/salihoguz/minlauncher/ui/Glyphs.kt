@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.salihoguz.minlauncher.data.IconCache
 import io.github.salihoguz.minlauncher.data.InstalledApp
@@ -27,16 +28,38 @@ import kotlinx.coroutines.withContext
 val IconSize = 26.dp
 private val glyphColor = Ui.text.copy(alpha = 0.82f)
 
-/** The app's one-colour icon; blank until it has loaded. */
+/** The app's one-colour icon (or full colour with [color]); blank until it has loaded. */
 @Composable
-fun AppIcon(app: InstalledApp, modifier: Modifier = Modifier) {
+fun AppIcon(app: InstalledApp, modifier: Modifier = Modifier, color: Boolean = false, size: Dp = IconSize) {
     val context = LocalContext.current.applicationContext
-    val sizePx = with(LocalDensity.current) { IconSize.roundToPx() }
-    val icon by produceState(initialValue = IconCache.peek(app.key), app.key) {
-        if (value == null) value = withContext(Dispatchers.IO) { IconCache.load(context, app, sizePx) }
+    val sizePx = with(LocalDensity.current) { size.roundToPx() }
+    val icon by produceState(initialValue = IconCache.peek(app.key, color), app.key, color) {
+        if (value == null) value = withContext(Dispatchers.IO) { IconCache.load(context, app, sizePx, color) }
     }
-    Box(modifier.size(IconSize)) {
-        icon?.let { Image(bitmap = it, contentDescription = null, alpha = 0.85f, modifier = Modifier.fillMaxSize()) }
+    Box(modifier.size(size)) {
+        icon?.let {
+            Image(bitmap = it, contentDescription = null, alpha = if (color) 1f else 0.85f, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
+/** Four small squares: Library, Stats and Settings. */
+@Composable
+fun ManageGlyph(modifier: Modifier = Modifier) {
+    Canvas(modifier.size(IconSize)) {
+        val u = size.width / 24f
+        val stroke = Stroke(width = 1.6f * u)
+        for (x in listOf(4f, 13f)) {
+            for (y in listOf(4f, 13f)) {
+                drawRoundRect(
+                    color = glyphColor,
+                    topLeft = Offset(x * u, y * u),
+                    size = Size(7f * u, 7f * u),
+                    cornerRadius = CornerRadius(1.6f * u),
+                    style = stroke,
+                )
+            }
+        }
     }
 }
 

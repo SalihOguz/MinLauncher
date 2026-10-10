@@ -5,7 +5,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - Interactive mockups: https://claude.ai/artifact/LakBZN4dLuTsr8MkrcQAzH
 - App ID: `io.github.salihoguz.minlauncher`
 - First user: Samsung Galaxy Note 20 Ultra, Android 13 (One UI 5), about 411 × 882 dp. Shared later, maybe on F-Droid.
-- Stack: Kotlin, Jetpack Compose, DataStore (Room when the launch log arrives in v0.2). minSdk 28, so the APK also installs on older phones if it's shared later.
+- Stack: Kotlin, Jetpack Compose, DataStore for settings, small CSV files on the phone for the drawer-visit and launch logs (kept 60 days). minSdk 28, so the APK also installs on older phones if it's shared later.
 
 ## Home
 
@@ -37,7 +37,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Swipe left | Camera |
 | Swipe right | Phone |
 | Double-tap empty space | Lock screen (accessibility service) |
-| Hold empty space | Settings (Manage in v0.4) |
+| Hold empty space | Manage, on the Settings tab |
 | Tap clock / date | Clock / Calendar |
 | Tap weather line | Weather screen (v0.5) |
 
@@ -60,21 +60,32 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - **New (v0.2):** apps installed after MinLauncher started keeping track, never opened from it; they stay until opened once (or removed, pinned, or put on home). ✦ marker for 3 days after install, wherever the name appears.
 - **Folders (v0.3):** user-created, from "New folder" in the drawer, "+ New folder" in Move to folder, or Settings. Each folder row shows its app count and opens in place (tap again to close). Unsorted is the inbox: every app without a folder; it shows once the first folder exists. An unfiled app's sheet suggests a folder from `ApplicationInfo.category` (Games, Media, Social, News, Travel, Work), reusing an existing folder of that name. Settings: rename, delete (apps go back to Unsorted), move up/down. Names up to 24 letters; "Unsorted" is taken.
 - **A–Z rail (v0.3):** down the right edge while the keyboard is down and nothing is typed (setting, default on). Letters bend away from the finger, a bubble shows the letter, and the list shows only apps under it (# for names that don't start with A–Z). Tapping empty space, Back, or "clear" brings the full list back; typing replaces the filter.
-- **Hidden apps:** gone from the drawer and search. Listed in Settings (v0.1), later in Library.
+- **Manage button (v0.4):** four small squares at the right end of the search bar while nothing is typed; opens Manage on Library.
+- **Hidden apps:** gone from the drawer and search. Listed in Library › Hidden (v0.4).
 
 ## Long-press sheet
 
 - **v0.1:** install date; Open · App info · Uninstall; Pin/Unpin · Add to/Remove from home · Rename · Hide.
 - **v0.2:** last opened; Rename & search words; Remove from New / Remove from Recent; Show in Recent switch.
 - **v0.3:** folder (or Unsorted) in the details line; Move to folder (the folders, Unsorted, + New folder); folder suggestion for unfiled apps.
-- **Later:** size.
+- **v0.4:** size (app + data with usage access, otherwise the installed files); apps that came with the phone show "Disable", which opens App info.
 
 ## Manage (v0.4): Library · Stats · Settings
 
-- Opened by holding empty space on home, or from the drawer. Nothing in it pops up on its own.
-- **Library:** full colour icons; sort by least used, newest, largest, A–Z; filters Unused 60+ days and Hidden; batch uninstall (Android confirms each one; system apps go to App info › Disable).
-- **Stats:** how each drawer visit ended (typed, pinned, recent, web, folder, rail, keyboard closed first), screen time and unlocks today, most opened apps.
-- **Suggestions** live only in Stats, each with one action and "Not now" (hidden for 30 days). Examples: pin an app you keep typing for; move a rarely used home app to Pinned; unpin a pinned app untouched for 30 days; turn off Recent if barely used; review apps unused for 60+ days.
+- Opened by holding empty space on home (Settings tab), or from the drawer's Manage button (Library tab). Nothing in it pops up on its own. Tabs across the top, Done or Back to leave.
+- **Usage access** (off until turned on in Android's settings, from Settings › Data or the hints in Library and Stats): Android's own records of app use. It adds screen time, unlocks, full app sizes and "unused" for apps never opened from MinLauncher. Without it, "used" means opened from MinLauncher, sizes are the installed files only, and apps can only count as unused once MinLauncher has kept track for 60 days. Records cover the main profile; work apps use MinLauncher's own.
+- **Library:** every app, hidden ones included, with full colour icons. Each row: name, then use (time on screen in 30 days, or when last used/opened), size, and tags (hidden, system, work). Sort: least used (default), newest, largest, A–Z. Filters with counts: All, Unused 60+ days, Hidden. Tap opens the app's sheet. Hold to start selecting, tap to add more, then "Uninstall N": Android confirms each one in turn; apps that came with the phone open App info instead, where they can be disabled.
+- **Stats:**
+  - Today (usage access): time in apps as one big number, unlocks, and the 5 apps used longest. MinLauncher itself doesn't count.
+  - Drawer, last 30 days: number of visits and how each ended (typed a name, pinned, recent, new, folder, A–Z rail, scrolled to it, web search, left without opening), as bars with counts and shares, plus how often the keyboard was put away first.
+  - Most opened from MinLauncher, last 30 days: top 8 apps (home, drawer and sheet opens), counted from v0.4 on.
+- **Suggestions** live only at the top of Stats, at most 5, each with one action and "Not now" (hidden for 30 days):
+  - Pin an app typed to open 5+ times in 2 weeks (not on home or pinned).
+  - Unpin a pinned app not opened in 30+ days and pinned 30+ days ago.
+  - Move a home app opened 2 times or fewer in 30 days to Pinned (needs a month of launch records; skips apps placed in the last 30 days).
+  - Turn off Recent when under 3% of 40+ visits in 30 days ended there.
+  - Review 3+ unused apps: opens Library › Unused.
+- **Settings tab:** everything from before, plus Apps (Hidden apps › Library) and Data (Usage access, Export settings, Import settings). Export writes one JSON file with home, pinned, folders, names, search words and every setting; Import replaces everything after a confirmation. The visit and launch logs stay out of backups.
 
 ## Settings and defaults
 
@@ -95,7 +106,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Apps | Hidden apps | — | v0.1 |
 | Apps | Folders, renamed apps and search words, apps that skip Recent | games skip Recent | v0.2–v0.3 |
 | Look | Theme, font light / regular | system, light | later |
-| Data | Usage access, export / import settings | off | v0.4 |
+| Data | Usage access (Android setting), export / import settings | off | v0.4 |
 
 ## Build order
 

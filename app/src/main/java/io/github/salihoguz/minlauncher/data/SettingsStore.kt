@@ -15,7 +15,10 @@ import io.github.salihoguz.minlauncher.domain.ClockMode
 import io.github.salihoguz.minlauncher.domain.Folders
 import io.github.salihoguz.minlauncher.domain.HomeLayout
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "launcher")
 
@@ -49,6 +52,10 @@ data class LauncherSettings(
     val folders: List<String> = emptyList(),
     /** Which folder each app is in. Apps without one are in Unsorted. */
     val folderOf: Map<String, String> = emptyMap(),
+    /** When each app was put on home or pinned (recorded from v0.4 on). */
+    val placedAt: Map<String, Long> = emptyMap(),
+    /** When "Not now" was pressed on each Stats suggestion. */
+    val snoozedSuggestions: Map<String, Long> = emptyMap(),
 )
 
 class SettingsStore(context: Context) {
@@ -62,6 +69,8 @@ class SettingsStore(context: Context) {
         val showInRecent = HashMap<String, Boolean>()
         val removed = HashMap<String, Long>()
         val folderOf = HashMap<String, String>()
+        val placedAt = HashMap<String, Long>()
+        val snoozed = HashMap<String, Long>()
         for ((key, value) in p.asMap()) {
             val name = key.name
             when {
@@ -71,6 +80,8 @@ class SettingsStore(context: Context) {
                 name.startsWith(SHOW_IN_RECENT) -> (value as? Boolean)?.let { showInRecent[name.removePrefix(SHOW_IN_RECENT)] = it }
                 name.startsWith(REMOVED_FROM_RECENT) -> (value as? Long)?.let { removed[name.removePrefix(REMOVED_FROM_RECENT)] = it }
                 name.startsWith(FOLDER) -> folderOf[name.removePrefix(FOLDER)] = value.toString()
+                name.startsWith(PLACED) -> (value as? Long)?.let { placedAt[name.removePrefix(PLACED)] = it }
+                name.startsWith(SNOOZED) -> (value as? Long)?.let { snoozed[name.removePrefix(SNOOZED)] = it }
             }
         }
         LauncherSettings(
@@ -94,6 +105,8 @@ class SettingsStore(context: Context) {
             dismissedFromNew = p[DISMISSED_FROM_NEW].orEmpty(),
             folders = p[FOLDERS].toKeyList(),
             folderOf = folderOf,
+            placedAt = placedAt,
+            snoozedSuggestions = snoozed,
         )
     }
 
@@ -113,6 +126,7 @@ class SettingsStore(context: Context) {
         if (key !in home && home.size < HomeLayout.MAX_APPS) {
             p[HOME] = (home + key).joinToString(SEPARATOR)
             p[PINNED] = (p[PINNED].toKeyList() - key).joinToString(SEPARATOR)
+            p[longPreferencesKey(PLACED + key)] = System.currentTimeMillis()
         }
     }
 
@@ -122,7 +136,67 @@ class SettingsStore(context: Context) {
 
     suspend fun pin(key: String) = store.edit { p ->
         val pinned = p[PINNED].toKeyList()
-        if (key !in pinned) p[PINNED] = (pinned + key).joinToString(SEPARATOR)
+        if (key !in pinned) {
+            p[PINNED] = (pinned + key).joinToString(SEPARATOR)
+            p[longPreferencesKey(PLACED + key)] = System.currentTimeMillis()
+        }
+    }
+
+    /** Hides a Stats suggestion for 30 days. */
+    suspend fun snoozeSuggestion(id: String) = store.edit { it[longPreferencesKey(SNOOZED + id)] = System.currentTimeMillis() }
+
+    /** Every setting and per-app choice, as JSON, for a backup file. */
+    suspend fun exportJson(): String {
+        val prefs = JSONObject()
+        for ((key, value) in store.data.first().asMap()) {
+            val entry = when (value) {
+                is Boolean -> JSONObject().put("type", "boolean").put("value", value)
+                is Int -> JSONObject().put("type", "int").put("value", value)
+                is Long -> JSONObject().put("type", "long").put("value", value)
+                is Float -> JSONObject().put("type", "float").put("value", value.toDouble())
+                is String -> JSONObject().put("type", "string").put("value", value)
+                is Set<*> -> JSONObject().put("type", "strings").put("value", JSONArray(value.map { it.toString() }))
+                else -> continue
+            }
+            prefs.put(key.name, entry)
+        }
+        return JSONObject()
+            .put("app", BACKUP_APP)
+            .put("format", BACKUP_FORMAT)
+            .put("settings", prefs)
+            .toString(2)
+    }
+
+    /** Replaces everything with a backup made by [exportJson]. False if the file isn't one. */
+    suspend fun importJson(text: String): Boolean {
+        val entries = runCatching {
+            val root = JSONObject(text)
+            require(root.optString("app") == BACKUP_APP)
+            val prefs = root.getJSONObject("settings")
+            prefs.keys().asSequence().mapNotNull { name ->
+                val entry = prefs.getJSONObject(name)
+                when (entry.getString("type")) {
+                    "boolean" -> booleanPreferencesKey(name) to entry.getBoolean("value")
+                    "int" -> intPreferencesKey(name) to entry.getInt("value")
+                    "long" -> longPreferencesKey(name) to entry.getLong("value")
+                    "float" -> floatPreferencesKey(name) to entry.getDouble("value").toFloat()
+                    "string" -> stringPreferencesKey(name) to entry.getString("value")
+                    "strings" -> {
+                        val array = entry.getJSONArray("value")
+                        stringSetPreferencesKey(name) to (0 until array.length()).map { array.getString(it) }.toSet()
+                    }
+                    else -> null
+                }
+            }.toList()
+        }.getOrNull() ?: return false
+        store.edit { p ->
+            p.clear()
+            entries.forEach { (key, value) ->
+                @Suppress("UNCHECKED_CAST")
+                p[key as Preferences.Key<Any>] = value
+            }
+        }
+        return true
     }
 
     suspend fun unpin(key: String) = store.edit { p ->
@@ -227,6 +301,10 @@ class SettingsStore(context: Context) {
         const val SHOW_IN_RECENT = "show_recent:"
         const val REMOVED_FROM_RECENT = "recent_removed:"
         const val FOLDER = "folder:"
+        const val PLACED = "placed:"
+        const val SNOOZED = "snoozed:"
+        const val BACKUP_APP = "MinLauncher"
+        const val BACKUP_FORMAT = 1
         val FOLDERS = stringPreferencesKey("folders")
         val HOME = stringPreferencesKey("home")
         val PINNED = stringPreferencesKey("pinned")
