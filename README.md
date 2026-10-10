@@ -119,7 +119,7 @@ You need JDK 17 and the Android SDK (compile SDK 35).
 ./gradlew assembleRelease     # app/build/outputs/apk/release/app-release.apk
 ```
 
-Every push runs the tests and builds an APK on GitHub Actions. The newest one is always on the rolling [`dev-build`](https://github.com/SalihOguz/MinLauncher/releases/tag/dev-build) pre-release. Pushing a version tag (`git tag v1.0.0 && git push --tags`) publishes a proper release.
+Every push runs the tests and builds an APK on GitHub Actions. The newest one is always on the rolling [`dev-build`](https://github.com/SalihOguz/MinLauncher/releases/tag/dev-build) pre-release. Pushing a version tag publishes a proper release; see [docs/releasing.md](docs/releasing.md).
 
 ### Code tour
 
@@ -130,17 +130,6 @@ Every push runs the tests and builds an APK on GitHub Actions. The newest one is
 | `.../ui` | Jetpack Compose screens: home, drawer, app menu, Manage (Library, Stats, Settings), weather. |
 | `.../system` | Talking to Android: launching apps, App info, uninstall, web search, the lock service. |
 | `docs/spec.md` | Design notes: every behaviour, number and default in detail. |
-
-### Signing
-
-Without a release key, builds are signed with the debug key committed in `app/debug.keystore`. That's fine for trying things out, but anyone can sign an APK with that key. For releases people will rely on, the workflow signs with a private key kept in the repository's secrets:
-
-```sh
-keytool -genkeypair -v -keystore release.jks -alias minlauncher -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 release.jks   # the value for RELEASE_KEYSTORE_BASE64
-```
-
-Add these under **Settings › Secrets and variables › Actions**: `RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`. Keep `release.jks` and its passwords somewhere safe: every future update must be signed with the same key. An APK signed with a different key can't install over the old one, so export your settings, uninstall, install, then import.
 
 ## Contributing
 
