@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -25,6 +26,8 @@ data class LauncherSettings(
     val openOnlyMatch: Boolean = false,
     val enterSearchesWeb: Boolean = true,
     val doubleTapToLock: Boolean = true,
+    /** How much the drawer darkens the wallpaper, 0..1. */
+    val drawerDim: Float = 0.3f,
 )
 
 class SettingsStore(context: Context) {
@@ -44,6 +47,7 @@ class SettingsStore(context: Context) {
             openOnlyMatch = p[OPEN_ONLY_MATCH] ?: false,
             enterSearchesWeb = p[ENTER_SEARCHES_WEB] ?: true,
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
+            drawerDim = p[DRAWER_DIM] ?: 0.3f,
         )
     }
 
@@ -90,6 +94,7 @@ class SettingsStore(context: Context) {
     suspend fun setOpenOnlyMatch(value: Boolean) = store.edit { it[OPEN_ONLY_MATCH] = value }
     suspend fun setEnterSearchesWeb(value: Boolean) = store.edit { it[ENTER_SEARCHES_WEB] = value }
     suspend fun setDoubleTapToLock(value: Boolean) = store.edit { it[DOUBLE_TAP_LOCK] = value }
+    suspend fun setDrawerDim(value: Float) = store.edit { it[DRAWER_DIM] = value.coerceIn(0f, 0.8f) }
 
     private fun String?.toKeyList(): List<String> =
         this?.split(SEPARATOR)?.filter { it.isNotBlank() }?.distinct().orEmpty()
@@ -105,5 +110,6 @@ class SettingsStore(context: Context) {
         val OPEN_ONLY_MATCH = booleanPreferencesKey("open_only_match")
         val ENTER_SEARCHES_WEB = booleanPreferencesKey("enter_searches_web")
         val DOUBLE_TAP_LOCK = booleanPreferencesKey("double_tap_lock")
+        val DRAWER_DIM = floatPreferencesKey("drawer_dim")
     }
 }

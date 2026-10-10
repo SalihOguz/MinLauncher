@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,6 +41,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.salihoguz.minlauncher.LockService
 import io.github.salihoguz.minlauncher.domain.ClockMode
 import io.github.salihoguz.minlauncher.system.Actions
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> Unit) {
@@ -100,6 +104,7 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
 
         item { SectionLabel("Drawer") }
         item { Toggle("Open with the keyboard", null, settings.keyboardOnOpen, viewModel::setKeyboardOnOpen) }
+        item { DimSlider(settings.drawerDim, viewModel::setDrawerDim) }
         item {
             Toggle(
                 "Open the only match by itself",
@@ -162,6 +167,25 @@ fun SettingsScreen(state: UiState, viewModel: LauncherViewModel, onClose: () -> 
 
         item { SectionLabel("About") }
         item { Text("MinLauncher $version", color = Ui.faint, fontSize = 14.sp) }
+    }
+}
+
+@Composable
+private fun DimSlider(value: Float, onChange: (Float) -> Unit) {
+    var local by remember(value) { mutableFloatStateOf(value) }
+    Column(Modifier.padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Background dim", color = Ui.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Text("${(local * 100).roundToInt()}%", color = Ui.dim, fontSize = 14.sp)
+        }
+        Slider(
+            value = local,
+            onValueChange = { local = it },
+            onValueChangeFinished = { onChange(local) },
+            valueRange = 0f..0.8f,
+            steps = 15,
+            colors = SliderDefaults.colors(thumbColor = Ui.text, activeTrackColor = Ui.accent),
+        )
     }
 }
 

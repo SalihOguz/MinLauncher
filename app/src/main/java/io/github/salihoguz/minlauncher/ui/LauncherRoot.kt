@@ -52,28 +52,31 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        HomeScreen(
-            apps = state.home,
-            clockMode = state.settings.clockMode,
-            loaded = state.loaded,
-            actions = HomeActions(
-                onOpen = open,
-                onAppLongPress = { sheetKey = it.key },
-                onReorder = viewModel::reorderHome,
-                onSwipeUp = { screen = Screen.DRAWER },
-                onSwipeDown = { Actions.expandNotifications(context) },
-                onSwipeLeft = { Actions.camera(context) },
-                onSwipeRight = { Actions.dialer(context) },
-                onDoubleTap = {
-                    if (state.settings.doubleTapToLock && !Actions.lockScreen()) {
-                        Actions.toast(context, "Turn on the lock service in Settings to lock with a double-tap")
-                    }
-                },
-                onEmptyLongPress = { screen = Screen.SETTINGS },
-                onClock = { Actions.clock(context) },
-                onDate = { Actions.calendar(context) },
-            ),
-        )
+        // Home fades out while the drawer or settings are open, so its text never shows through.
+        AnimatedVisibility(visible = screen == Screen.HOME, enter = fadeIn(), exit = fadeOut()) {
+            HomeScreen(
+                apps = state.home,
+                clockMode = state.settings.clockMode,
+                loaded = state.loaded,
+                actions = HomeActions(
+                    onOpen = open,
+                    onAppLongPress = { sheetKey = it.key },
+                    onReorder = viewModel::reorderHome,
+                    onSwipeUp = { screen = Screen.DRAWER },
+                    onSwipeDown = { Actions.expandNotifications(context) },
+                    onSwipeLeft = { Actions.camera(context) },
+                    onSwipeRight = { Actions.dialer(context) },
+                    onDoubleTap = {
+                        if (state.settings.doubleTapToLock && !Actions.lockScreen()) {
+                            Actions.toast(context, "Turn on the lock service in Settings to lock with a double-tap")
+                        }
+                    },
+                    onEmptyLongPress = { screen = Screen.SETTINGS },
+                    onClock = { Actions.clock(context) },
+                    onDate = { Actions.calendar(context) },
+                ),
+            )
+        }
 
         AnimatedVisibility(
             visible = screen == Screen.DRAWER,

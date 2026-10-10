@@ -75,6 +75,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setOpenOnlyMatch(value: Boolean) = save { store.setOpenOnlyMatch(value) }
     fun setEnterSearchesWeb(value: Boolean) = save { store.setEnterSearchesWeb(value) }
     fun setDoubleTapToLock(value: Boolean) = save { store.setDoubleTapToLock(value) }
+    fun setDrawerDim(value: Float) = save { store.setDrawerDim(value) }
 
     private fun save(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

@@ -33,7 +33,8 @@ object Ui {
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Light,
         color = text,
-        fontSize = 22.sp,
+        fontSize = 26.sp,
+        shadow = Shadow(color = Color(0x55000000), offset = Offset(0f, 2f), blurRadius = 4f),
     )
 
     val label = TextStyle(fontSize = 11.sp, letterSpacing = 1.5.sp, color = faint)

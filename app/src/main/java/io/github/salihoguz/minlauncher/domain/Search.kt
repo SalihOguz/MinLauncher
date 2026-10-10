@@ -30,7 +30,8 @@ object Search {
             words.any { it.startsWith(compactQuery) } -> 1
             words.size > 1 && compactQuery.length >= 2 &&
                 words.joinToString("") { it.take(1) }.startsWith(compactQuery) -> 2
-            compact.contains(compactQuery) -> 3
+            // Matches inside a name only from 3 letters on; "al" finding "Signal" is noise.
+            compactQuery.length >= 3 && compact.contains(compactQuery) -> 3
             else -> null
         }
     }

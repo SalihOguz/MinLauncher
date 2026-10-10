@@ -39,6 +39,13 @@ class SearchTest {
     fun ordersByMatchQualityThenName() {
         assertEquals(listOf("Gmail", "Google Drive"), search("g"))
         assertEquals(listOf("Google Drive"), search("gd"))
-        assertEquals(listOf("Keep Notes", "Kindle", "Şok Market"), search("k"))
+        assertEquals(listOf("Keep Notes", "Kindle"), search("k"))
+    }
+
+    @Test
+    fun shortQueriesDontMatchInsideNames() {
+        assertNull(Search.score("Signal", "al"))
+        assertEquals(3, Search.score("Signal", "nal"))
+        assertEquals(0, Search.score("Alarmy", "al"))
     }
 }

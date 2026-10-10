@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -35,8 +38,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -48,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -108,22 +114,36 @@ fun DrawerScreen(
         }
     }
 
-    Column(
+    // The list never resizes with the keyboard: the keyboard and the search bar float over it.
+    // The room the keyboard takes is remembered for the whole visit, so when the keyboard
+    // goes away (for example when you start scrolling) nothing moves under your finger.
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val navBottom = WindowInsets.navigationBars.getBottom(density)
+    var keyboardRoom by remember { mutableIntStateOf(0) }
+    val room = (imeBottom - navBottom).coerceAtLeast(0)
+    SideEffect { if (room > keyboardRoom) keyboardRoom = room }
+
+    Box(
         Modifier
             .fillMaxSize()
-            .background(Ui.scrim)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding(),
+            .background(Color.Black.copy(alpha = settings.drawerDim)),
     ) {
         // Item 0 sits on the search bar; the list grows upward from your thumb.
         LazyColumn(
             state = listState,
             reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(
+                start = 24.dp,
+                end = 24.dp,
+                top = 8.dp,
+                bottom = with(density) { keyboardRoom.toDp() } + 4.dp,
+            ),
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(bottom = SearchBarHeight),
         ) {
             if (query.isNotBlank()) {
                 item(key = "web") { WebRow(query) { onWebSearch(query) } }
@@ -141,9 +161,15 @@ fun DrawerScreen(
             onQueryChange = { query = it },
             focusRequester = focusRequester,
             onEnter = onEnter,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .imePadding(),
         )
     }
 }
+
+private val SearchBarHeight = 64.dp
 
 @Composable
 private fun SearchBar(
@@ -151,13 +177,18 @@ private fun SearchBar(
     onQueryChange: (String) -> Unit,
     focusRequester: FocusRequester,
     onEnter: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 10.dp)) {
+    Column(
+        modifier
+            .height(SearchBarHeight)
+            .padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp),
+                .weight(1f),
         ) {
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) {
@@ -215,7 +246,7 @@ private fun AppRow(app: LauncherApp, onOpen: (LauncherApp) -> Unit, onLongPress:
                 },
                 onClick = { onOpen(app) },
             )
-            .padding(vertical = 9.dp),
+            .padding(vertical = 10.dp),
     )
 }
 
@@ -278,7 +309,7 @@ private fun PinnedGrid(
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val gap = 12.dp
             val cellWidth = (maxWidth - gap) / 2
-            val cellHeight = 44.dp
+            val cellHeight = 50.dp
             val rows = (order.size + 1) / 2
             val cellWidthPx = with(density) { cellWidth.toPx() }
             val cellHeightPx = with(density) { cellHeight.toPx() }
