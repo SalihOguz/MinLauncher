@@ -1,0 +1,1 @@
+First public release: home with up to 28 apps, weather and calendar lines; drawer with search, Pinned, Recent, New, folders and an A–Z rail; Library and Stats; export and import of settings.

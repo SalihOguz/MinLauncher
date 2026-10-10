@@ -1,0 +1,29 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and Android version
+      placeholder: Samsung Galaxy Note 20 Ultra, Android 13
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MinLauncher version
+      description: In Settings, at the bottom (About).
+      placeholder: "1.0.0"
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or a recording
+      description: Drag files here if you have them.

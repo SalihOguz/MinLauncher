@@ -3,7 +3,6 @@ package io.github.salihoguz.minlauncher.data
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -90,7 +89,8 @@ class WeatherSource(private val context: Context) {
             .maxByOrNull { it.time }
         val fresh = recent != null && System.currentTimeMillis() - recent.time < 60 * 60 * 1000L
         val location: Location = (if (fresh) recent else currentLocation(manager) ?: recent) ?: return null
-        return Place(placeName(location), "Approximate location", location.latitude, location.longitude)
+        // Not named with Android's Geocoder: on most phones that sends the position to Google.
+        return Place("Your location", "Approximate location", location.latitude, location.longitude)
     }
 
     private suspend fun currentLocation(manager: LocationManager): Location? {
@@ -106,15 +106,6 @@ class WeatherSource(private val context: Context) {
                 }
             }
         }
-    }
-
-    private suspend fun placeName(location: Location): String = withContext(Dispatchers.IO) {
-        runCatching {
-            @Suppress("DEPRECATION")
-            Geocoder(context).getFromLocation(location.latitude, location.longitude, 1)
-                ?.firstOrNull()
-                ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
-        }.getOrNull() ?: "Your area"
     }
 
     private fun get(url: String): String {

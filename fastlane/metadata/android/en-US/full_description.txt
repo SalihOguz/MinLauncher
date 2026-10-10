@@ -1,0 +1,29 @@
+<p>MinLauncher keeps the minimal look of a text-only home screen (app names in light text over your wallpaper, a big clock, nothing else) and fixes what gets in the way when you use one every day.</p>
+
+<p><b>Home</b></p>
+<ul>
+<li>Up to 28 apps: one column up to 14, then two balanced columns. Hold and drag to reorder.</li>
+<li>Big clock (auto, always or never), the date, a weather line with a heads-up when rain is likely, and today's next event from the calendars you pick.</li>
+<li>Swipe up for apps, down for notifications, left for the camera, right for the phone. Double-tap to lock.</li>
+</ul>
+
+<p><b>Drawer</b></p>
+<ul>
+<li>Opens with the keyboard up and the search bar right above it.</li>
+<li>Forgiving search: names, initials, your own search words and small typos. Enter searches the web.</li>
+<li>Pinned apps, your recent apps, new apps you haven't opened yet, folders that open in place, and all apps with an A–Z rail.</li>
+<li>Hold any app for Open, App info, Uninstall, pin, rename, hide and move to folder.</li>
+</ul>
+
+<p><b>Library and Stats</b></p>
+<ul>
+<li>Every app with colour icons, use and size. Find apps unused for 60 days and uninstall several in a row.</li>
+<li>Screen time and unlocks today, how your drawer visits end, your most opened apps, and gentle suggestions you can ignore.</li>
+</ul>
+
+<p><b>Private and calm</b></p>
+<ul>
+<li>No ads, no analytics, no accounts, no blockers, no timers, no pop-ups.</li>
+<li>Everything stays on the phone. The only network traffic is weather from Open-Meteo, with your position rounded to about 10 km, and only if you set it up.</li>
+<li>Export and import all settings as one file.</li>
+</ul>

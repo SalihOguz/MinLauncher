@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="18 18 72 72">
+  <title>MinLauncher</title>
+  <rect x="18" y="18" width="72" height="72" rx="21" fill="#17161D"/>
+  <path d="M37.5,70 V38.5 L54,59 L70.5,38.5 V70" fill="none" stroke="#F4F2F7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="54" cy="69.2" r="2.5" fill="#C9568F"/>
+</svg>

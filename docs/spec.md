@@ -1,10 +1,11 @@
-# MinLauncher spec
+# MinLauncher design notes
+
+The detailed behaviour behind the [README](../README.md): every rule, number and default, and the version each arrived in.
 
 Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer that puts what you need right above the keyboard, and a place to see and clean up everything else. No blockers, no timers.
 
-- Interactive mockups: https://claude.ai/artifact/LakBZN4dLuTsr8MkrcQAzH
 - App ID: `io.github.salihoguz.minlauncher`
-- First user: Samsung Galaxy Note 20 Ultra, Android 13 (One UI 5), about 411 × 882 dp. Shared later, maybe on F-Droid.
+- Designed on a Samsung Galaxy Note 20 Ultra, Android 13 (One UI 5), about 411 × 882 dp.
 - Stack: Kotlin, Jetpack Compose, DataStore for settings, small CSV files on the phone for the drawer-visit and launch logs (kept 60 days). minSdk 28, so the APK also installs on older phones if it's shared later.
 
 ## Home
@@ -124,7 +125,9 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 
 ## Getting builds onto the phone
 
-GitHub Actions builds an optimized (R8) APK on every push. It attaches the APK to a pre-release called `dev-build` and uploads it as a workflow artifact. Every build is signed with the same committed key (not a store key), so a new APK installs over the old one.
+GitHub Actions runs the unit tests and builds an optimized (R8) APK on every push. It attaches the APK to a rolling pre-release called `dev-build` and uploads it as a workflow artifact. A version tag (`v1.0.0`) publishes a proper release with the APK.
+
+Builds are signed with the repository's private release key when it's in the repository's secrets, and with the committed debug key otherwise (forks, pull requests). Either way every build from the same key installs over the previous one.
 
 ## Parked
 

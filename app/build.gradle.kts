@@ -14,18 +14,28 @@ android {
         applicationId = "io.github.salihoguz.minlauncher"
         minSdk = 28
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.5.0"
+        versionCode = 7
+        versionName = "1.0.0"
     }
 
     signingConfigs {
         // A committed debug key, so every CI build installs over the previous one.
-        // Not for store releases.
+        // Public, so not for releases people rely on.
         getByName("debug") {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
+        }
+        // The private release key, when the build is given one (see README, "Signing").
+        val releaseKeystore = System.getenv("MINLAUNCHER_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("MINLAUNCHER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MINLAUNCHER_KEY_ALIAS")
+                keyPassword = System.getenv("MINLAUNCHER_KEY_PASSWORD")
+            }
         }
     }
 
@@ -35,7 +45,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
