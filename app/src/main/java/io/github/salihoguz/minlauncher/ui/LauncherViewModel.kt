@@ -223,7 +223,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val ok = runCatching {
                 val json = store.exportJson()
                 withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toByteArray()) }
+                    getApplication<Application>().contentResolver.openOutputStream(uri)!!.use { it.write(json.toByteArray()) }
                 }
             }.isSuccess
             done(ok)
