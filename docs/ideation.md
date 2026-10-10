@@ -1,94 +1,130 @@
 # MinLauncher: ideation
 
-A calmer Olauncher you can actually live in: the same text-only home screen, room for up to 15 apps, and a drawer that helps you find, recognise and clean up apps you forgot you had. No app blockers, no timers.
+Olauncher's home screen, kept as it is, with room for 15 apps. A drawer that puts what you need right above the keyboard, and a Library for cleaning up. No blockers, no timers.
 
 Interactive mockups: https://claude.ai/artifact/LakBZN4dLuTsr8MkrcQAzH
 
-## Why Olauncher feels limited (checked in its source)
+Target device: Samsung Galaxy Note 20 Ultra, Android 13 (One UI 5), about 411 × 882 dp.
 
-| Pain | Cause in Olauncher |
+## Decided
+
+- **Home:** auto-fit up to 15 apps; compact clock from 12 apps (above 11); drag to reorder. Keeps Olauncher's fonts, sizes and positions.
+- **Gestures:** swipe up drawer, swipe down notifications, swipe left Camera, swipe right Phone, double-tap lock, hold empty space for settings. Tap clock/date opens Clock/Calendar.
+- **Drawer:** search bar above the keyboard.
+- **Pinned** apps in the drawer (secondary apps like banks), drag to reorder.
+- **Recent:** 5 apps, as an experiment. Skips apps on home, pinned apps, swipe-gesture apps, games, and any app with "Show in Recent" off. The switch is per app and off by default for games.
+- **New:** an app stays in New until opened once (it then shows in Recent). ✦ marker shows for 3 days after install, wherever the app appears.
+- **Rename + search words** per app.
+- **Long-press sheet:** install date, last opened, size, folder, search words; Open · App info · Uninstall; Pin/Unpin · Add to/Remove from home · Move to folder · Rename & words · Hide; Remove from New / Remove from Recent when they apply; Show in Recent switch.
+- **Folders** with Unsorted as the inbox. When you long-press an unfiled app, suggest a folder from `ApplicationInfo.category`.
+- **Icons:** monochrome in the browse list; full colour in Library.
+- **Hidden apps:** gone from the drawer and search, still listed in Library under Hidden.
+- **Tags instead of folders:** skipped.
+- **Build:** fresh, Kotlin + Jetpack Compose. Borrow from Minimo (MIT) only where useful.
+
+## Olauncher's home look (from its source, xxhdpi resources)
+
+| Element | Value |
 |---|---|
-| Max 8 home apps | Home is eight fixed views (`homeApp1`…`homeApp8` in `fragment_home.xml`), not a list |
-| New apps get lost | The ✦ marker shows only for 1 hour after install (`now - firstInstallTime < ONE_HOUR`) |
-| Can't browse | Drawer has one order: alphabetical. No recents, install date, icons or folders |
-| Uninstall / app info hard to find | They exist, but only behind a long-press with no hint |
+| App names | 30 sp, `sans-serif-light`, white, shadow dy 2 dp, radius 4 dp |
+| Vertical padding per name | 10 dp |
+| Side margin | 24 dp, left aligned |
+| Clock | 66 sp `sans-serif-light`, 56 dp from top |
+| Date | 18 sp, `EEE, dd MMM` |
+| App list | paddingTop 112 dp, paddingBottom 48 dp, `center_vertical` |
 
-## Guiding idea: a friction ladder
+Auto-fit on the Note 20 Ultra: squeeze spacing first, shrink text only if needed.
+- 1–11 apps, big clock: rows go from about 60 dp to 54 dp; text stays 30 sp.
+- 12–15 apps, compact one-line clock: rows go down to about 48 dp at 15; text still stays 30 sp.
 
-Each layer costs a little more effort and shows a little more information. The fast layers stay text-only.
+## Drawer
 
-1. **Home**: the 8–15 apps you picked. Text only.
-2. **Search**: swipe up, type. Text only.
-3. **Browse**: close the keyboard. Small monochrome icons, New, Recent, folders.
-4. **Library**: every app with last-used, install date and size. Cleanup lives here.
+One screen; the keyboard is just up or down. The list grows upward from the search bar (thumb reach on a 6.9" phone), in this order from the bar:
 
-## 1. Home (up to 15 apps, same look)
+1. Search bar
+2. Pinned (about 4 fit with Recent above the keyboard)
+3. Recent (5)
+4. New
+5. Folders (accordion, inline), including Unsorted
+6. All apps A–Z
 
-Squeeze spacing first, shrink text only after that.
+About 470 dp stays visible above the keyboard: 9 rows at 44 dp, so 4 Pinned + 5 Recent fit exactly. Drawer rows are 44 dp, smaller than home's.
 
-- **1A Auto-fit** (recommended): pick 1–15; rows are sized to the free height. Text never exceeds today's size and has a readable floor.
-- **1B Compact clock above 10 apps** (recommended with 1A): clock and date fold into one line. In the mockup, 15 apps then fit at 100% of today's text size, rows ≈45 dp (Android recommends 48 dp touch targets, so 15 is about the ceiling).
-- **1C Two columns** (option): full text size; long names may truncate.
-- **1D Second home page** (skip): clashes with left/right swipe shortcuts.
+Search: matches start of name, start of any word, initials (`km` → Keep Notes), search words (`bank` → Revolut), folder names, small typos; ignores symbols (`edevlet` → e-Devlet). The best match sits next to the search bar. A single match opens by itself. With no app match, Enter searches the web in Brave.
 
-## 2–4. Drawer: search when you know, browse when you don't
+Keyboard down (browse): monochrome icons and an A–Z rail on the right edge (Indistract-style: letters bend away from the finger). The rail filters the list to that letter, so results stay near the thumb.
 
-Search mode:
-- Search bar above the keyboard; results grow upward toward the thumb.
-- Empty query shows Recent and New right above the keyboard.
-- Matches initials (`km` → Keep Notes), user-added search words (`bank` → Revolut), folder names, small typos.
-- Single match auto-opens; no match offers a Play Store search.
+### Search vs browse (proposal)
 
-Options:
-- **2A New until settled** (recommended): a new app stays in New (✦) until opened 3 times, filed into a folder, or added to home.
-- **2B Rename + search words** (recommended): give an app words like `hiking`, `bike` so search finds it.
-- **3A Long-press sheet** (recommended): install date, last opened, size, folder; Open · App info · Uninstall; Move to folder · Add to home · Rename · Hide.
-- **4A Folders with Unsorted as inbox** (recommended): one folder per app, accordion inline so the drawer stays one list. New apps land in Unsorted.
-- **4B Folder suggestions from `ApplicationInfo.category`** (option): Game, Social, Maps, Audio, Video, Image, News, Productivity. Many apps declare none, so suggestion only.
-- **4C Tags instead of folders** (skip for now).
+- **D1, recommended:** open with the keyboard up. Pinned and Recent sit right above it, so there's nothing to close the keyboard for. Scrolling hides the keyboard for browsing.
+- **D2, setting:** open with the list.
+- **D3, recommended:** a local counter records how each drawer visit ended (typed, pinned, recent, folder, A–Z, web). After two weeks, look at the counts in Library and pick D1 or D2. Needs no permission.
 
-Icons:
+## Widgets (proposal)
 
-| Style | Recognition | Calm | Note |
-|---|---|---|---|
-| None | Low | High | Current state |
-| **Monochrome** | Good | High | Android 13+ themed-icon layer (`AdaptiveIconDrawable.getMonochrome()`), greyscale fallback. Recommended, Browse + Library only |
-| Greyscale | Good | Medium | Works for every app; grey tiles add weight |
-| Colour | Best | Low | Built to grab attention |
+- **W1, recommended:** glance line under the date ("18° · rain from 15:00"). It joins the one-line clock in compact mode. Tap opens W2.
+- **W2, recommended:** minimal weather screen with an animated monochrome icon, now, the next hours and tomorrow. Data from Open-Meteo (free, no key). A typed city avoids the location permission.
+- **W3, recommended:** Brave web search from the drawer, which replaces the search widget.
+- **W4, option:** next calendar event in the glance line (needs calendar permission).
+- **W5, option:** screen time and unlocks in the Library header (usage access).
+- **W6, skip:** a page of real Android widgets.
 
-Recent apps guardrails: exclude home apps, cap at 5, show only with empty search, optional per-app "never show in Recent" (not a blocker), count launcher launches only (no permission).
+## Library
 
-## Library (cleanup)
-
-- Sort: least used, newest, largest, A–Z. Filter: unused 60+ days.
-- Multi-select uninstall; Android still confirms each app, the launcher queues them.
-- Never pops up on its own.
+- Full colour icons.
+- Sort: least used, newest, largest, A–Z. Filters: Unused 60+ days, Hidden.
+- Batch uninstall: Android confirms each app; the launcher queues them. System apps are pointed to App info › Disable.
+- Optional header: screen time and unlocks today, drawer-visit stats.
 
 | Data | Source | Permission |
 |---|---|---|
 | Install date | `PackageInfo.firstInstallTime` | None |
-| Last opened from launcher | own launch log | None |
-| Last opened any way | `UsageStatsManager` | Usage access (optional) |
+| Last opened from launcher, drawer stats | own launch log (Room) | None |
+| Last opened any way, screen time, unlocks | `UsageStatsManager` | Usage access (optional) |
 | App size | `StorageStatsManager` | Usage access (optional) |
+| Folder suggestion | `ApplicationInfo.category` | None |
+| Monochrome icon | `AdaptiveIconDrawable.getMonochrome()` (API 33) | None |
 
-## Build path
+## Settings (proposal)
 
-- **B1 Fork Olauncher** (not recommended): GPLv3, Android Views, hard-coded 8 slots; most code would be replaced.
-- **B2 Fork Minimo** (fast start): MIT, Kotlin + Compose + Room; already has folders, optional icons, unlimited favourites, app info/uninstall. Needs restyling and settings/billing stripped.
-- **B3 Fresh Kotlin + Compose, borrowing from Minimo** (recommended): `LauncherApps` for apps and package events, Room for folders/search words/launch history, DataStore for settings.
+- **Home:** apps on home (1–15); compact clock threshold (12); alignment; text size (30 sp); clock, date, 24h and the apps they open; glance line; wallpaper dim %; daily wallpaper; status bar.
+- **Gestures:** swipe left app, swipe right app, double-tap lock, swipe down notifications.
+- **Drawer:** opens with keyboard or list; auto-open single match; Recent off/5/10; mono icons browse-only or always; A–Z rail; drawer dim %; web search browser; ignore symbols.
+- **Apps:** folders; hidden apps (opens Library); renamed apps and search words; apps that skip Recent.
+- **Look:** theme; font light or regular.
+- **Data:** usage access; weather city or location; export/import settings.
+
+Left out from Minimo: notification dots, battery level, icons on home, landscape mode, search bar styling, billing.
+
+## Build order
 
 | Step | Ships |
 |---|---|
-| v0.1 | Home with auto-fit + compact clock, gestures, search drawer, long-press sheet (replaces Olauncher day to day) |
-| v0.2 | New-until-settled, Recent with guardrails, search words, initials/typo matching |
-| v0.3 | Browse mode, monochrome icons, folders with Unsorted inbox |
-| v0.4 | Library: sorts, unused filter, batch uninstall, optional usage access |
+| v0.1 | Home (Olauncher look, auto-fit to 15, compact clock, drag reorder, gestures, double-tap lock), drawer with keyboard up and search bar above it, Pinned, long-press sheet, basic settings |
+| v0.2 | New + ✦, Recent rules + Show in Recent switch, search words/initials/typos, Brave web search, drawer-visit counter |
+| v0.3 | Browse (keyboard down): mono icons, folders + Unsorted + category suggestions, A–Z rail, hidden apps |
+| v0.4 | Library: colour icons, sorts, filters, batch uninstall, usage access, screen time, drawer stats |
+| v0.5 | Glance line + weather screen |
 
-## Open decisions
+Stack: Kotlin, Jetpack Compose, Room, DataStore, coroutines/Flow. No ads, no analytics. The only network call is weather.
 
-1. Home: 1A+1B or 1C?
-2. Search bar above the keyboard, or at the top like Olauncher?
-3. Icons in Browse/Library only, or in search results too?
-4. Recent: off, 5 or 10?
-5. B3 (fresh) or B2 (fork Minimo)? Publish it? Open source?
-6. Phone's Android version (monochrome icons need 13+).
+## Parked
+
+- ProLauncher-style "gentle interrupt" reminders. They need foreground-app detection (usage-access polling or an accessibility service) and an overlay. The user's time sinks are inside Brave, which a launcher sees only as "Brave".
+
+## Open questions (round 2)
+
+1. Start with the keyboard up (D1) plus the visit counter (D3)?
+2. With icons only when browsing, names shift right when the keyboard closes. Is that fine, or show icons always?
+3. Never-opened apps: stay in New until opened or removed, or move to Unsorted after 30 days?
+4. Is about 4 pinned apps enough?
+5. Glance line: weather only, or weather plus next event? Weather from a typed city or from approximate location?
+6. Keep Olauncher's daily wallpaper feature?
+7. App ID `io.github.salihoguz.minlauncher`?
+
+## Round 1 findings (Olauncher source)
+
+- Home is 8 fixed views (`homeApp1`…`homeApp8`), hence the 8-app limit.
+- The ✦ new marker lasts 1 hour after install (`now - firstInstallTime < ONE_HOUR`).
+- The drawer is sorted alphabetically only.
+- Uninstall, App info, Hide and Rename sit behind a long-press with no hint.
