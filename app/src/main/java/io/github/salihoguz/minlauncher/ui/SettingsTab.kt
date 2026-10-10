@@ -106,10 +106,11 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
                 onSelect = viewModel::setClockMode,
             )
         }
+        item { DimSlider("Wallpaper dim", settings.homeDim, viewModel::setHomeDim) }
 
         item { SectionLabel("Drawer") }
         item { Toggle("Open with the keyboard", null, settings.keyboardOnOpen, viewModel::setKeyboardOnOpen) }
-        item { DimSlider(settings.drawerDim, viewModel::setDrawerDim) }
+        item { DimSlider("Wallpaper dim", settings.drawerDim, viewModel::setDrawerDim) }
         item {
             Toggle(
                 "A–Z rail",
@@ -147,7 +148,7 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
 
         item { SectionLabel("Folders") }
         if (state.folders.isEmpty()) {
-            item { Text("None yet. Apps without a folder sit in Unsorted.", color = Ui.faint, fontSize = 14.sp) }
+            item { Text("None yet.", color = Ui.faint, fontSize = 14.sp) }
         }
         itemsIndexed(state.folders, key = { _, group -> "folder-" + group.name }) { index, group ->
             FolderSetting(
@@ -290,8 +291,8 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
                 Text(
                     when (count) {
                         0 -> "The folder is empty."
-                        1 -> "Its app goes back to Unsorted. Nothing is uninstalled."
-                        else -> "Its $count apps go back to Unsorted. Nothing is uninstalled."
+                        1 -> "Its app just leaves the folder. Nothing is uninstalled."
+                        else -> "Its $count apps just leave the folder. Nothing is uninstalled."
                     },
                 )
             },
@@ -363,11 +364,11 @@ private fun SmallAction(text: String, enabled: Boolean = true, onClick: () -> Un
 }
 
 @Composable
-private fun DimSlider(value: Float, onChange: (Float) -> Unit) {
+private fun DimSlider(title: String, value: Float, onChange: (Float) -> Unit) {
     var local by remember(value) { mutableFloatStateOf(value) }
     Column(Modifier.padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Background dim", color = Ui.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Text(title, color = Ui.text, fontSize = 16.sp, modifier = Modifier.weight(1f))
             Text("${(local * 100).roundToInt()}%", color = Ui.dim, fontSize = 14.sp)
         }
         Slider(

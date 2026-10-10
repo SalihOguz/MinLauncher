@@ -45,8 +45,6 @@ data class UiState(
     val hidden: List<LauncherApp> = emptyList(),
     /** User folders with their apps, in the user's order. */
     val folders: List<FolderGroup> = emptyList(),
-    /** Apps not filed in any folder: the inbox. */
-    val unsorted: List<LauncherApp> = emptyList(),
     val settings: LauncherSettings = LauncherSettings(),
 ) {
     val homeKeys: Set<String> get() = home.mapTo(HashSet()) { it.key }
@@ -126,7 +124,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             newApps = Sections.newApps(history, settings.trackingSince, settled).mapNotNull { byKey[it] },
             hidden = all.filter { it.key in settings.hidden }.sortedWith { a, b -> collator.compare(a.label, b.label) },
             folders = settings.folders.map { name -> FolderGroup(name, visible.filter { it.folder == name }) },
-            unsorted = visible.filter { it.folder == null },
             settings = settings,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, UiState())
@@ -171,6 +168,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setEnterSearchesWeb(value: Boolean) = save { store.setEnterSearchesWeb(value) }
     fun setDoubleTapToLock(value: Boolean) = save { store.setDoubleTapToLock(value) }
     fun setDrawerDim(value: Float) = save { store.setDrawerDim(value) }
+    fun setHomeDim(value: Float) = save { store.setHomeDim(value) }
     fun setRecentCount(value: Int) = save { store.setRecentCount(value) }
     fun snoozeSuggestion(id: String) = save { store.snoozeSuggestion(id) }
 

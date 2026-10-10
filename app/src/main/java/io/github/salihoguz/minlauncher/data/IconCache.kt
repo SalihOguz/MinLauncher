@@ -8,18 +8,18 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
+import android.graphics.PorterDuffXfermode
 import android.graphics.drawable.AdaptiveIconDrawable
-import android.os.Build
+import android.graphics.drawable.Drawable
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
 /**
- * App icons as small bitmaps. The drawer uses one-colour icons: apps that ship a themed
- * (monochrome) icon layer, Android 13+, get it drawn in white; the rest get a grey version of
- * their normal icon. Library uses the full-colour icon.
+ * App icons as small bitmaps, all in the same rounded-square shape. The drawer uses grey
+ * versions; Library uses full colour.
  */
 object IconCache {
 
@@ -27,6 +27,15 @@ object IconCache {
     private val cache = object : LruCache<String, ImageBitmap>(16 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
+
+    /** Corner radius as a share of the icon's size. */
+    private const val CORNER = 0.3f
+
+    /** Old-style icons sit on a white tile at this share of its size, like Android does it. */
+    private const val LEGACY_SCALE = 0.78f
+
+    private val grey = Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) }
+    private val mask = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
 
     fun peek(key: String, color: Boolean = false): ImageBitmap? = cache.get(cacheKey(key, color))
 
@@ -45,24 +54,50 @@ object IconCache {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(app.component)
         val icon = runCatching { launcherApps.resolveActivity(intent, app.user)?.getIcon(0)?.mutate() }.getOrNull()
             ?: return null
+        val bitmap = runCatching { draw(icon, sizePx, color) }.getOrNull() ?: return null
+        return bitmap.asImageBitmap().also { cache.put(cacheKey, it) }
+    }
 
+    private fun draw(icon: Drawable, sizePx: Int, color: Boolean): Bitmap {
+        val size = sizePx.toFloat()
         val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val monochrome = if (!color && Build.VERSION.SDK_INT >= 33 && icon is AdaptiveIconDrawable) icon.monochrome?.mutate() else null
-        if (color) {
+        // Everything drawn inside this layer turns grey when it's put down (unless in colour).
+        val layer = canvas.saveLayer(0f, 0f, size, size, if (color) null else grey)
+        if (icon is AdaptiveIconDrawable) {
+            // Layers are 108 dp with the visible icon in the middle 72 dp: draw them bigger and
+            // let the mask below trim them.
+            val bleed = sizePx / 4
+            listOfNotNull(icon.background, icon.foreground).forEach { layerDrawable ->
+                layerDrawable.setBounds(-bleed, -bleed, sizePx + bleed, sizePx + bleed)
+                layerDrawable.draw(canvas)
+            }
+        } else if (fillsItsSquare(icon, sizePx)) {
             icon.setBounds(0, 0, sizePx, sizePx)
             icon.draw(canvas)
-        } else if (monochrome != null) {
-            // Adaptive icon layers are 108 dp; the visible icon is the middle 72 dp.
-            val inset = sizePx / 4
-            monochrome.setBounds(-inset, -inset, sizePx + inset, sizePx + inset)
-            monochrome.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
-            monochrome.draw(canvas)
         } else {
-            icon.setBounds(0, 0, sizePx, sizePx)
-            icon.colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) })
+            // Round or odd-shaped old icons: centred on a white tile.
+            canvas.drawColor(Color.WHITE)
+            val inset = ((1f - LEGACY_SCALE) / 2f * size).toInt()
+            icon.setBounds(inset, inset, sizePx - inset, sizePx - inset)
             icon.draw(canvas)
         }
-        return bitmap.asImageBitmap().also { cache.put(cacheKey, it) }
+        // Trim to the shared shape, with smooth edges.
+        canvas.drawRoundRect(0f, 0f, size, size, size * CORNER, size * CORNER, mask)
+        canvas.restoreToCount(layer)
+        return bitmap
+    }
+
+    /** True for old-style icons that are a full square: their corners are solid. */
+    private fun fillsItsSquare(icon: Drawable, sizePx: Int): Boolean {
+        val probe = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        icon.setBounds(0, 0, sizePx, sizePx)
+        icon.draw(Canvas(probe))
+        val near = (sizePx * 0.1f).toInt()
+        val far = sizePx - 1 - near
+        val corners = listOf(near to near, far to near, near to far, far to far)
+        val solid = corners.all { (x, y) -> Color.alpha(probe.getPixel(x, y)) > 200 }
+        probe.recycle()
+        return solid
     }
 }

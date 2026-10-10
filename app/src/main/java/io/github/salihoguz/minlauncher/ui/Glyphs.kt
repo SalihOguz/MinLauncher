@@ -63,26 +63,48 @@ fun ManageGlyph(modifier: Modifier = Modifier) {
     }
 }
 
-/** A folder outline, drawn to sit with the app icons. */
+/** A folder outline, drawn to sit with the app icons. Open: the front flap folds down. */
 @Composable
-fun FolderGlyph(modifier: Modifier = Modifier) {
+fun FolderGlyph(modifier: Modifier = Modifier, open: Boolean = false) {
     Canvas(modifier.size(IconSize)) {
         val u = size.width / 24f
         val stroke = Stroke(width = 1.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val path = Path().apply {
-            moveTo(3f * u, 8f * u)
-            lineTo(3f * u, 5f * u)
-            lineTo(9f * u, 5f * u)
-            lineTo(11f * u, 7f * u)
+        if (open) {
+            // Back of the folder with its tab, and the front leaning forward.
+            val back = Path().apply {
+                moveTo(4f * u, 19f * u)
+                lineTo(3f * u, 19f * u)
+                lineTo(3f * u, 5f * u)
+                lineTo(9f * u, 5f * u)
+                lineTo(11f * u, 7f * u)
+                lineTo(19f * u, 7f * u)
+                lineTo(19f * u, 10f * u)
+            }
+            val front = Path().apply {
+                moveTo(3f * u, 19f * u)
+                lineTo(6.5f * u, 10f * u)
+                lineTo(22f * u, 10f * u)
+                lineTo(18.5f * u, 19f * u)
+                close()
+            }
+            drawPath(back, glyphColor, style = stroke)
+            drawPath(front, glyphColor, style = stroke)
+        } else {
+            val tab = Path().apply {
+                moveTo(3f * u, 8f * u)
+                lineTo(3f * u, 5f * u)
+                lineTo(9f * u, 5f * u)
+                lineTo(11f * u, 7f * u)
+            }
+            drawPath(tab, glyphColor, style = stroke)
+            drawRoundRect(
+                color = glyphColor,
+                topLeft = Offset(3f * u, 7f * u),
+                size = Size(18f * u, 12f * u),
+                cornerRadius = CornerRadius(2f * u),
+                style = stroke,
+            )
         }
-        drawPath(path, glyphColor, style = stroke)
-        drawRoundRect(
-            color = glyphColor,
-            topLeft = Offset(3f * u, 7f * u),
-            size = Size(18f * u, 12f * u),
-            cornerRadius = CornerRadius(2f * u),
-            style = stroke,
-        )
     }
 }
 

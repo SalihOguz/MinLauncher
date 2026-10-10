@@ -33,20 +33,8 @@ class FoldersTest {
         assertNull(Folders.problemWithName("Banks", existing))
         assertNotNull(Folders.problemWithName("  ", existing))
         assertNotNull(Folders.problemWithName("money", existing))
-        assertNotNull(Folders.problemWithName("unsorted", existing))
         assertNotNull(Folders.problemWithName("x".repeat(25), existing))
         // Renaming a folder to a different capitalisation of itself is fine.
         assertNull(Folders.problemWithName("MONEY", existing, renaming = "Money"))
-    }
-
-    @Test
-    fun railLetters() {
-        assertEquals('A', Folders.railLetter("Alarmy"))
-        assertEquals('S', Folders.railLetter("Şok Market"))
-        assertEquals('I', Folders.railLetter("İstanbulkart"))
-        assertEquals('E', Folders.railLetter("e-Devlet"))
-        assertEquals('#', Folders.railLetter("1Password"))
-        assertEquals('#', Folders.railLetter(""))
-        assertEquals(27, Folders.RAIL_LETTERS.size)
     }
 }

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 
 package io.github.salihoguz.minlauncher.ui
 
@@ -14,10 +14,12 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -35,6 +38,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
@@ -52,12 +56,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -67,6 +72,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -85,9 +91,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
-import io.github.salihoguz.minlauncher.domain.Folders
+import io.github.salihoguz.minlauncher.domain.Rail
 import io.github.salihoguz.minlauncher.domain.Search
 import io.github.salihoguz.minlauncher.domain.VisitOutcome
+import kotlinx.coroutines.launch
 
 @Composable
 fun DrawerScreen(
@@ -103,20 +110,21 @@ fun DrawerScreen(
 ) {
     val settings = state.settings
     var query by rememberSaveable { mutableStateOf("") }
-    // A letter picked on the A–Z rail filters the list until you tap empty space or clear.
-    var letter by remember { mutableStateOf<Char?>(null) }
     val results = remember(query, state.apps) {
         if (query.isBlank()) emptyList() else Search.filter(state.apps, query, searchWords = { it.searchWords }) { it.label }
     }
-    val lettered = remember(letter, state.apps) {
-        letter?.let { l -> state.apps.filter { Folders.railLetter(it.label) == l } }.orEmpty()
-    }
-    val availableLetters = remember(state.apps) { state.apps.mapTo(HashSet()) { Folders.railLetter(it.label) } }
     val expanded = remember { mutableStateListOf<String>() }
+    val expandedNow = expanded.toList()
+    val drawer = remember(state, query, results, expandedNow) { buildRows(state, query, results, expandedNow) }
+    val railTargets = remember(state.apps) { Rail.targets(state.apps.map { it.label }) }
+    val availableLetters = remember(state.apps) { state.apps.mapTo(HashSet()) { Rail.letterOf(it.label) } }
+    // Opening from All apps after using the rail counts as a rail visit.
+    var usedRail by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     // One record per visit: how it ended, and whether the keyboard was put away first.
     val visit = remember { VisitTracker() }
@@ -124,18 +132,17 @@ fun DrawerScreen(
     DisposableEffect(Unit) {
         onDispose { visit.end(VisitOutcome.NONE, currentVisitEnd) }
     }
-    fun openFrom(outcome: VisitOutcome): (LauncherApp) -> Unit = { app ->
-        visit.end(outcome, currentVisitEnd)
-        onOpen(app, outcome)
+    fun open(app: LauncherApp, outcome: VisitOutcome) {
+        val counted = if (outcome == VisitOutcome.LIST && usedRail) VisitOutcome.RAIL else outcome
+        visit.end(counted, currentVisitEnd)
+        onOpen(app, counted)
     }
     val searchWeb: (String) -> Unit = { text ->
         visit.end(VisitOutcome.WEB, currentVisitEnd)
         onWebSearch(text)
     }
 
-    BackHandler {
-        if (letter != null) letter = null else onClose()
-    }
+    BackHandler(onBack = onClose)
 
     LaunchedEffect(Unit) {
         if (settings.keyboardOnOpen) {
@@ -144,36 +151,70 @@ fun DrawerScreen(
         }
     }
 
-    // The list never resizes with the keyboard: the keyboard and the search bar float over it.
-    // The room the keyboard takes is remembered for the whole visit, so when the keyboard
-    // goes away (for example when you start scrolling) nothing moves under your finger.
+    // The list never resizes with the keyboard: the keyboard and the search bar float over it,
+    // and the list keeps room for the keyboard below its last row.
+    // - When MinLauncher puts the keyboard away (you scrolled or tapped the list), that room
+    //   stays, so nothing moves under your finger.
+    // - When you put it away yourself (Back), the list follows it down to the search bar.
     val density = LocalDensity.current
     val imeBottom = WindowInsets.ime.getBottom(density)
+    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
     val navBottom = WindowInsets.navigationBars.getBottom(density)
-    var keyboardRoom by remember { mutableIntStateOf(0) }
     val room = (imeBottom - navBottom).coerceAtLeast(0)
-    SideEffect { if (room > keyboardRoom) keyboardRoom = room }
-    val keyboardUp by rememberUpdatedState(room > 0)
-
-    // Scrolling the list puts the keyboard away, so you can browse.
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-            if (scrolling) {
-                if (keyboardUp) visit.keyboardClosedFirst = true
-                keyboard?.hide()
-                focusManager.clearFocus()
-            }
+    var keyboardRoom by remember { mutableIntStateOf(0) }
+    var holdRoom by remember { mutableStateOf(false) }
+    var followDown by remember { mutableStateOf(false) }
+    SideEffect {
+        if (room > keyboardRoom) keyboardRoom = room
+        // Fully up: whoever closes it next decides what happens.
+        if (room > 0 && imeBottom == imeTarget) holdRoom = false
+        if (!holdRoom && room < keyboardRoom) {
+            keyboardRoom = room
+            followDown = true
         }
     }
-    LaunchedEffect(results) {
-        if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) openFrom(VisitOutcome.SEARCH)(results.single())
+    LaunchedEffect(followDown) {
+        if (followDown) {
+            listState.animateScrollToItem(0)
+            followDown = false
+        }
     }
-    // Typing replaces a rail filter.
-    LaunchedEffect(query) { if (query.isNotBlank()) letter = null }
+    val keyboardUp by rememberUpdatedState(room > 0)
+
+    fun putKeyboardAway() {
+        if (keyboardUp) {
+            holdRoom = true
+            visit.keyboardClosedFirst = true
+        }
+        keyboard?.hide()
+        focusManager.clearFocus()
+    }
+
+    // Dragging the list puts the keyboard away, so you can browse.
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) putKeyboardAway() }
+    }
+    LaunchedEffect(results) {
+        if (settings.openOnlyMatch && query.isNotBlank() && results.size == 1) open(results.single(), VisitOutcome.SEARCH)
+    }
 
     val onEnter = {
         if (query.isNotBlank()) {
-            if (settings.enterSearchesWeb || results.isEmpty()) searchWeb(query) else openFrom(VisitOutcome.SEARCH)(results.first())
+            if (settings.enterSearchesWeb || results.isEmpty()) searchWeb(query) else open(results.first(), VisitOutcome.SEARCH)
+        }
+    }
+
+    val rowFallbackPx = with(density) { 50.dp.roundToPx() }
+    fun jumpTo(letter: Char) {
+        usedRail = true
+        scope.launch {
+            if (letter == RAIL_BOTTOM) {
+                listState.scrollToItem(0)
+                return@launch
+            }
+            val position = railTargets[letter] ?: return@launch
+            val row = drawer.allAppsStart + (state.apps.size - 1 - position)
+            listState.showAtTop(row, rowFallbackPx)
         }
     }
 
@@ -184,8 +225,7 @@ fun DrawerScreen(
 
     // The darkening is drawn by LauncherRoot as its own layer, so it fades in evenly.
     Box(Modifier.fillMaxSize()) {
-        // Item 0 sits on the search bar; the list grows upward from your thumb.
-        // Sections are emitted bottom-up: items reversed, then their label.
+        // Row 0 sits on the search bar; the list grows upward from your thumb.
         LazyColumn(
             state = listState,
             reverseLayout = true,
@@ -200,8 +240,8 @@ fun DrawerScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(bottom = SearchBarHeight)
-                // A tap on empty space clears the rail filter; taps on rows never reach here.
-                .pointerInput(Unit) { detectTapGestures { letter = null } }
+                // A tap on empty space puts the keyboard away and leaves the list where it is.
+                .pointerInput(Unit) { detectTapGestures { putKeyboardAway() } }
                 .onGloballyPositioned { listTop = it.positionInRoot().y }
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
@@ -220,62 +260,16 @@ fun DrawerScreen(
                     }
                 },
         ) {
-            val currentLetter = letter
-            when {
-                query.isNotBlank() -> {
-                    item(key = "web") { WebRow(query) { searchWeb(query) } }
-                    val open = openFrom(VisitOutcome.SEARCH)
-                    items(results, key = { "result-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                }
-                currentLetter != null -> {
-                    val open = openFrom(VisitOutcome.RAIL)
-                    if (lettered.isEmpty()) {
-                        item(key = "letter-empty") { Hint("No apps under $currentLetter. Tap empty space to go back.") }
+            items(drawer.rows, key = { it.key }, contentType = { it::class }) { row ->
+                when (row) {
+                    is DrawerRow.Web -> WebRow(row.query) { searchWeb(row.query) }
+                    is DrawerRow.App -> AppRow(row.app, { open(row.app, row.outcome) }, onLongPress, inFolder = row.inFolder)
+                    is DrawerRow.Pinned -> PinnedGrid(row.apps, { open(it, VisitOutcome.PINNED) }, onLongPress, onReorderPinned)
+                    is DrawerRow.Folder -> FolderRow(row.name, row.count, row.open) {
+                        if (row.open) expanded.remove(row.name) else expanded.add(row.name)
                     }
-                    items(lettered.asReversed(), key = { "letter-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                    item(key = "letter-label") { SectionLabel("Starts with $currentLetter") }
-                }
-                else -> {
-                    if (state.pinned.isNotEmpty()) {
-                        item(key = "pinned") {
-                            PinnedGrid(state.pinned, openFrom(VisitOutcome.PINNED), onLongPress, onReorderPinned)
-                        }
-                    }
-                    if (state.recent.isNotEmpty()) {
-                        val open = openFrom(VisitOutcome.RECENT)
-                        items(state.recent.asReversed(), key = { "recent-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                        item(key = "recent-label") { SectionLabel("Recent") }
-                    }
-                    if (state.newApps.isNotEmpty()) {
-                        val open = openFrom(VisitOutcome.NEW)
-                        items(state.newApps.asReversed(), key = { "new-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                        item(key = "new-label") { SectionLabel("New") }
-                    }
-
-                    // Folders, bottom-up: New folder, Unsorted, then the user's folders in reverse.
-                    val openInFolder = openFrom(VisitOutcome.FOLDER)
-                    item(key = "new-folder") { NewFolderRow(onNewFolder) }
-                    if (state.folders.isNotEmpty()) {
-                        val groups = state.folders + FolderGroup(Folders.UNSORTED, state.unsorted)
-                        for (group in groups.asReversed()) {
-                            val isOpen = group.name in expanded
-                            if (isOpen) {
-                                items(group.apps.asReversed(), key = { "f-${group.name}-${it.key}" }) { app ->
-                                    AppRow(app, openInFolder, onLongPress, indent = true)
-                                }
-                            }
-                            item(key = "folder-${group.name}") {
-                                FolderRow(group.name, group.apps.size, isOpen) {
-                                    if (isOpen) expanded.remove(group.name) else expanded.add(group.name)
-                                }
-                            }
-                        }
-                    }
-                    item(key = "folders-label") { SectionLabel("Folders") }
-
-                    val open = openFrom(VisitOutcome.LIST)
-                    items(state.apps.asReversed(), key = { "all-" + it.key }) { app -> AppRow(app, open, onLongPress) }
-                    item(key = "all-label") { SectionLabel("All apps · ${state.apps.size}") }
+                    is DrawerRow.NewFolder -> NewFolderRow(onNewFolder)
+                    is DrawerRow.Label -> SectionLabel(row.text)
                 }
             }
         }
@@ -291,14 +285,12 @@ fun DrawerScreen(
                 .navigationBarsPadding()
                 .padding(top = 24.dp, bottom = SearchBarHeight + 24.dp, end = 6.dp),
         ) {
-            AlphabetRail(available = availableLetters, onLetter = { letter = it })
+            AlphabetRail(available = availableLetters, onLetter = ::jumpTo)
         }
 
         SearchBar(
             query = query,
             onQueryChange = { query = it },
-            filterLetter = letter,
-            onClearFilter = { letter = null },
             focusRequester = focusRequester,
             onEnter = onEnter,
             onManage = onManage,
@@ -309,6 +301,82 @@ fun DrawerScreen(
                 .onGloballyPositioned { barTop = it.positionInRoot().y },
         )
     }
+}
+
+/** One row of the drawer list. Rows are listed bottom-up: the first one sits on the search bar. */
+private sealed interface DrawerRow {
+    val key: String
+
+    data class Label(val text: String, override val key: String) : DrawerRow
+
+    data class Web(val query: String) : DrawerRow {
+        override val key get() = "web"
+    }
+
+    data class Pinned(val apps: List<LauncherApp>) : DrawerRow {
+        override val key get() = "pinned"
+    }
+
+    data class App(
+        val app: LauncherApp,
+        val outcome: VisitOutcome,
+        override val key: String,
+        /** Inside an open folder: joined to it by a line. */
+        val inFolder: Boolean = false,
+    ) : DrawerRow
+
+    data class Folder(val name: String, val count: Int, val open: Boolean) : DrawerRow {
+        override val key get() = "folder-$name"
+    }
+
+    data object NewFolder : DrawerRow {
+        override val key get() = "new-folder"
+    }
+}
+
+/** The rows, and where All apps starts (the row of its last app, alphabetically). */
+private class DrawerRows(val rows: List<DrawerRow>, val allAppsStart: Int)
+
+private fun buildRows(state: UiState, query: String, results: List<LauncherApp>, expanded: List<String>): DrawerRows {
+    val rows = ArrayList<DrawerRow>()
+    if (query.isNotBlank()) {
+        rows += DrawerRow.Web(query)
+        results.forEach { rows += DrawerRow.App(it, VisitOutcome.SEARCH, "result-" + it.key) }
+        return DrawerRows(rows, allAppsStart = 0)
+    }
+    if (state.pinned.isNotEmpty()) rows += DrawerRow.Pinned(state.pinned)
+    if (state.recent.isNotEmpty()) {
+        state.recent.asReversed().forEach { rows += DrawerRow.App(it, VisitOutcome.RECENT, "recent-" + it.key) }
+        rows += DrawerRow.Label("Recent", "recent-label")
+    }
+    if (state.newApps.isNotEmpty()) {
+        state.newApps.asReversed().forEach { rows += DrawerRow.App(it, VisitOutcome.NEW, "new-" + it.key) }
+        rows += DrawerRow.Label("New", "new-label")
+    }
+    rows += DrawerRow.NewFolder
+    for (group in state.folders.asReversed()) {
+        val open = group.name in expanded
+        if (open) {
+            group.apps.asReversed().forEach {
+                rows += DrawerRow.App(it, VisitOutcome.FOLDER, "f-${group.name}-${it.key}", inFolder = true)
+            }
+        }
+        rows += DrawerRow.Folder(group.name, group.apps.size, open)
+    }
+    rows += DrawerRow.Label("Folders", "folders-label")
+    val allAppsStart = rows.size
+    state.apps.asReversed().forEach { rows += DrawerRow.App(it, VisitOutcome.LIST, "all-" + it.key) }
+    rows += DrawerRow.Label("All apps · ${state.apps.size}", "all-label")
+    return DrawerRows(rows, allAppsStart)
+}
+
+/** Scrolls so the row at [index] is the top one on screen (rows grow upward from the bottom). */
+private suspend fun LazyListState.showAtTop(index: Int, fallbackRowPx: Int) {
+    val info = layoutInfo
+    val rowPx = info.visibleItemsInfo.firstOrNull { it.key.toString().startsWith("all-") }?.size ?: fallbackRowPx
+    val usable = info.viewportSize.height - info.beforeContentPadding - info.afterContentPadding
+    val fit = (usable / rowPx.coerceAtLeast(1)).coerceAtLeast(1)
+    scrollToItem((index - fit + 1).coerceAtLeast(0))
 }
 
 /** Remembers how a drawer visit ended; only the first ending counts. */
@@ -326,13 +394,20 @@ private class VisitTracker {
 private val SearchBarHeight = 64.dp
 private val FadeHeight = 28.dp
 private val IconGap = 14.dp
+/** Apps in an open folder line up with the folder's name. */
+private val FolderIndent = IconSize + IconGap
+private val GuideColor = Color.White.copy(alpha = 0.28f)
+
+/** The line joining an open folder to its apps, down the middle of the folder icon. */
+private fun DrawScope.folderGuide(fromY: Float) {
+    val x = IconSize.toPx() / 2f
+    drawLine(GuideColor, Offset(x, fromY), Offset(x, size.height), strokeWidth = 1.5.dp.toPx())
+}
 
 @Composable
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    filterLetter: Char?,
-    onClearFilter: () -> Unit,
     focusRequester: FocusRequester,
     onEnter: () -> Unit,
     onManage: () -> Unit,
@@ -366,16 +441,13 @@ private fun SearchBar(
                         .focusRequester(focusRequester),
                 )
             }
-            if (query.isNotEmpty() || filterLetter != null) {
+            if (query.isNotEmpty()) {
                 Text(
                     text = "clear",
                     color = Ui.dim,
                     fontSize = 14.sp,
                     modifier = Modifier
-                        .clickable {
-                            onQueryChange("")
-                            onClearFilter()
-                        }
+                        .clickable { onQueryChange("") }
                         .padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
                 )
             } else {
@@ -399,15 +471,16 @@ private fun SearchBar(
 @Composable
 private fun AppRow(
     app: LauncherApp,
-    onOpen: (LauncherApp) -> Unit,
+    onOpen: () -> Unit,
     onLongPress: (LauncherApp) -> Unit,
-    indent: Boolean = false,
+    inFolder: Boolean = false,
 ) {
     val haptics = LocalHapticFeedback.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (inFolder) Modifier.drawBehind { folderGuide(fromY = 0f) } else Modifier)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -415,9 +488,9 @@ private fun AppRow(
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongPress(app)
                 },
-                onClick = { onOpen(app) },
+                onClick = onOpen,
             )
-            .padding(start = if (indent) 20.dp else 0.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = if (inFolder) FolderIndent else 0.dp, top = 10.dp, bottom = 10.dp),
     ) {
         AppIcon(app.app)
         Spacer(Modifier.width(IconGap))
@@ -430,21 +503,21 @@ private fun AppRow(
     }
 }
 
+/** A folder: closed, or open with its apps joined below it by a line. */
 @Composable
 private fun FolderRow(name: String, count: Int, open: Boolean, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (open) Modifier.drawBehind { folderGuide(fromY = size.height / 2f + IconSize.toPx() * 0.4f) } else Modifier)
             .clickable(onClick = onToggle)
             .padding(vertical = 10.dp),
     ) {
-        FolderGlyph()
+        FolderGlyph(open = open)
         Spacer(Modifier.width(IconGap))
         Text(name, style = Ui.drawerApp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         Text("  $count", color = Ui.faint, fontSize = 14.sp)
-        Spacer(Modifier.weight(1f))
-        Text(if (open) "⌄" else "›", color = Ui.faint, fontSize = 22.sp)
     }
 }
 
@@ -461,11 +534,6 @@ private fun NewFolderRow(onClick: () -> Unit) {
         Spacer(Modifier.width(IconGap))
         Text("New folder", style = Ui.drawerApp.copy(color = Ui.dim))
     }
-}
-
-@Composable
-private fun Hint(text: String) {
-    Text(text, color = Ui.dim, fontSize = 15.sp, modifier = Modifier.padding(vertical = 12.dp))
 }
 
 /** The app's name, with a small ✦ for the first 3 days after install. */

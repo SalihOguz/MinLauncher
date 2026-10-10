@@ -33,7 +33,9 @@ data class LauncherSettings(
     val openOnlyMatch: Boolean = false,
     val enterSearchesWeb: Boolean = true,
     val doubleTapToLock: Boolean = true,
-    /** How much the drawer darkens the wallpaper, 0..1. */
+    /** How much home darkens the wallpaper, 0..0.8. */
+    val homeDim: Float = 0f,
+    /** How much the drawer darkens the wallpaper, 0..0.8. */
     val drawerDim: Float = 0.45f,
     /** How many Recent apps the drawer shows: 0, 5 or 10. */
     val recentCount: Int = 5,
@@ -50,7 +52,7 @@ data class LauncherSettings(
     val dismissedFromNew: Set<String> = emptySet(),
     /** User folders, in the order they show. */
     val folders: List<String> = emptyList(),
-    /** Which folder each app is in. Apps without one are in Unsorted. */
+    /** Which folder each app is in, if any. */
     val folderOf: Map<String, String> = emptyMap(),
     /** When each app was put on home or pinned (recorded from v0.4 on). */
     val placedAt: Map<String, Long> = emptyMap(),
@@ -95,6 +97,7 @@ class SettingsStore(context: Context) {
             openOnlyMatch = p[OPEN_ONLY_MATCH] ?: false,
             enterSearchesWeb = p[ENTER_SEARCHES_WEB] ?: true,
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
+            homeDim = p[HOME_DIM] ?: 0f,
             drawerDim = p[DRAWER_DIM] ?: 0.45f,
             recentCount = p[RECENT_COUNT] ?: 5,
             alphabetRail = p[ALPHABET_RAIL] ?: true,
@@ -232,7 +235,7 @@ class SettingsStore(context: Context) {
         if (Folders.problemWithName(name, folders) == null) p[FOLDERS] = (folders + name.trim()).joinToString(SEPARATOR)
     }
 
-    /** Files the app in [folder], creating the folder if needed; null puts it back in Unsorted. */
+    /** Files the app in [folder], creating the folder if needed; null takes it out of its folder. */
     suspend fun moveToFolder(key: String, folder: String?) = store.edit { p ->
         val prefKey = stringPreferencesKey(FOLDER + key)
         if (folder == null) {
@@ -257,7 +260,7 @@ class SettingsStore(context: Context) {
         assignmentsTo(p, old).forEach { p[it] = name }
     }
 
-    /** Removes the folder; its apps go back to Unsorted. */
+    /** Removes the folder; its apps stay installed, just not in a folder. */
     suspend fun deleteFolder(name: String) = store.edit { p ->
         p[FOLDERS] = (p[FOLDERS].toKeyList() - name).joinToString(SEPARATOR)
         assignmentsTo(p, name).forEach { p.remove(it) }
@@ -283,6 +286,7 @@ class SettingsStore(context: Context) {
     suspend fun setEnterSearchesWeb(value: Boolean) = store.edit { it[ENTER_SEARCHES_WEB] = value }
     suspend fun setDoubleTapToLock(value: Boolean) = store.edit { it[DOUBLE_TAP_LOCK] = value }
     suspend fun setDrawerDim(value: Float) = store.edit { it[DRAWER_DIM] = value.coerceIn(0f, 0.8f) }
+    suspend fun setHomeDim(value: Float) = store.edit { it[HOME_DIM] = value.coerceIn(0f, 0.8f) }
     suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 10) }
     suspend fun setAlphabetRail(value: Boolean) = store.edit { it[ALPHABET_RAIL] = value }
 
@@ -313,7 +317,10 @@ class SettingsStore(context: Context) {
         val OPEN_ONLY_MATCH = booleanPreferencesKey("open_only_match")
         val ENTER_SEARCHES_WEB = booleanPreferencesKey("enter_searches_web")
         val DOUBLE_TAP_LOCK = booleanPreferencesKey("double_tap_lock")
-        val DRAWER_DIM = floatPreferencesKey("drawer_dim")
+        // Renamed in v0.4.1, when home got its own dim: the old single slider read like the
+        // home screen's, so the drawer starts again from its default.
+        val DRAWER_DIM = floatPreferencesKey("drawer_dim_2")
+        val HOME_DIM = floatPreferencesKey("home_dim")
         val RECENT_COUNT = intPreferencesKey("recent_count")
         val ALPHABET_RAIL = booleanPreferencesKey("alphabet_rail")
         val TRACKING_SINCE = longPreferencesKey("tracking_since")

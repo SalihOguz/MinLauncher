@@ -85,7 +85,7 @@ fun AppSheet(
         if (app.app.isSystem) add("came with the phone")
         if (app.app.user != Process.myUserHandle()) add("work profile")
         if (onHome) add("on home") else if (pinned) add("pinned")
-        add(app.folder?.let { "in $it" } ?: "Unsorted")
+        app.folder?.let { add("in $it") }
     }.joinToString(" · ")
 
     ModalBottomSheet(
@@ -143,7 +143,7 @@ fun AppSheet(
                     folders.forEach { name ->
                         Chip(name, selected = name == app.folder) { onMoveToFolder(name) }
                     }
-                    Chip(Folders.UNSORTED, selected = app.folder == null) { onMoveToFolder(null) }
+                    if (app.folder != null) Chip("No folder", selected = false) { onMoveToFolder(null) }
                     Chip("+ New folder", selected = false, onClick = onNewFolder)
                 }
             }

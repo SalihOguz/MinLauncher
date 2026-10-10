@@ -1,8 +1,7 @@
 package io.github.salihoguz.minlauncher.domain
 
-/** Rules for user folders. Apps without a folder live in Unsorted, the inbox. */
+/** Rules for user folders. Apps can be in one folder or none. */
 object Folders {
-    const val UNSORTED = "Unsorted"
     const val MAX_NAME_LENGTH = 24
 
     /**
@@ -43,18 +42,9 @@ object Folders {
         return when {
             trimmed.isEmpty() -> "Type a name first."
             trimmed.length > MAX_NAME_LENGTH -> "Keep it under $MAX_NAME_LENGTH letters."
-            trimmed.equals(UNSORTED, ignoreCase = true) -> "Unsorted is where unfiled apps go."
             existing.any { it.equals(trimmed, ignoreCase = true) && !it.equals(renaming, ignoreCase = true) } ->
                 "A folder called $trimmed already exists."
             else -> null
         }
     }
-
-    /** The letter an app is filed under on the A–Z rail: A–Z, or # for anything else. */
-    fun railLetter(label: String): Char {
-        val first = Search.normalize(label).firstOrNull()?.uppercaseChar() ?: return '#'
-        return if (first in 'A'..'Z') first else '#'
-    }
-
-    val RAIL_LETTERS: List<Char> = ('A'..'Z').toList() + '#'
 }

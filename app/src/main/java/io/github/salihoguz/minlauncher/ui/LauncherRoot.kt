@@ -71,6 +71,23 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // One full-screen darkening layer, under everything, that fades with the screen change.
+        // Kept apart from the drawer's content (which also slides a little) so the wallpaper darkens evenly.
+        val dim by animateFloatAsState(
+            targetValue = when (screen) {
+                Screen.HOME -> state.settings.homeDim
+                Screen.DRAWER -> state.settings.drawerDim
+                Screen.MANAGE -> maxOf(0.6f, state.settings.homeDim)
+            },
+            animationSpec = tween(durationMillis = 220),
+            label = "dim",
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawBehind { drawRect(Color.Black.copy(alpha = dim)) },
+        )
+
         // Home fades out while the drawer or settings are open, so its text never shows through.
         AnimatedVisibility(visible = screen == Screen.HOME, enter = fadeIn(tween(220)), exit = fadeOut(tween(160))) {
             HomeScreen(
@@ -96,23 +113,6 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 ),
             )
         }
-
-        // One full-screen darkening layer that fades with the screen change. Kept apart from the
-        // drawer's content (which also slides a little) so the whole screen darkens evenly.
-        val dim by animateFloatAsState(
-            targetValue = when (screen) {
-                Screen.HOME -> 0f
-                Screen.DRAWER -> state.settings.drawerDim
-                Screen.MANAGE -> 0.6f
-            },
-            animationSpec = tween(durationMillis = 220),
-            label = "dim",
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBehind { drawRect(Color.Black.copy(alpha = dim)) },
-        )
 
         AnimatedVisibility(
             visible = screen == Screen.DRAWER,

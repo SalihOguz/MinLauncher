@@ -31,7 +31,7 @@ data class LauncherApp(
     val showInRecent: Boolean = !app.isGame,
     /** Installed in the last 3 days: shows a ✦ next to its name. */
     val isFresh: Boolean = false,
-    /** The user folder it's filed in, or null for Unsorted. */
+    /** The user folder it's filed in, or null. */
     val folder: String? = null,
 ) {
     val key: String get() = app.key

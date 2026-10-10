@@ -31,21 +31,24 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.salihoguz.minlauncher.domain.Folders
+import io.github.salihoguz.minlauncher.domain.Rail
 import kotlin.math.exp
 import kotlin.math.roundToInt
 
 private val RailWidth = 28.dp
 
+/** The last mark on the rail: jumps to the bottom of the list (Pinned). */
+const val RAIL_BOTTOM = '↓'
+
 /**
- * A–Z down the right edge. Slide a finger along it: the letters near the finger bend away
- * (after Indistract) and [onLetter] reports the letter under it.
+ * #, A–Z and ↓ down the right edge. Slide a finger along it: the letters near the finger bend
+ * away (after Indistract) and [onLetter] reports the letter under it.
  */
 @Composable
 fun AlphabetRail(available: Set<Char>, onLetter: (Char) -> Unit, modifier: Modifier = Modifier) {
     val haptics = LocalHapticFeedback.current
     val report by rememberUpdatedState(onLetter)
-    val letters = Folders.RAIL_LETTERS
+    val letters = Rail.LETTERS + RAIL_BOTTOM
     var height by remember { mutableIntStateOf(1) }
     var touching by remember { mutableStateOf(false) }
     var touchY by remember { mutableFloatStateOf(0f) }
@@ -94,7 +97,7 @@ fun AlphabetRail(available: Set<Char>, onLetter: (Char) -> Unit, modifier: Modif
                     fontSize = 11.sp,
                     color = when {
                         letter == current -> Ui.text
-                        letter in available -> Ui.dim
+                        letter in available || letter == RAIL_BOTTOM -> Ui.dim
                         else -> Ui.text.copy(alpha = 0.2f)
                     },
                     modifier = Modifier.graphicsLayer {
