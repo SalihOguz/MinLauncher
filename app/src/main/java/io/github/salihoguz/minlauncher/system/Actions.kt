@@ -70,6 +70,14 @@ object Actions {
 
     fun clock(context: Context) = start(context, Intent(AlarmClock.ACTION_SHOW_ALARMS), "No clock app found")
 
+    /** Opens one calendar event in the calendar app. */
+    fun calendarEvent(context: Context, id: Long, begin: Long, end: Long) {
+        val intent = Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id))
+            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
+            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
+        start(context, intent, "No calendar app found")
+    }
+
     fun calendar(context: Context) {
         val uri = ContentUris.withAppendedId(
             CalendarContract.CONTENT_URI.buildUpon().appendPath("time").build(),

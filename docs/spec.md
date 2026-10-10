@@ -26,7 +26,9 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - No compact clock; the status bar already shows the time.
 - Drag to reorder: hold an app, then drag. Hold and release opens the app's sheet.
 - Home is transparent over the system wallpaper. Wallpaper dim for home (default 0%) is its own setting, apart from the drawer's.
-- Weather line under the date (v0.5). Calendar line (v0.5): off until calendars are picked, shows today's next event, nothing on a free day.
+- **Weather line (v0.5)** under the date: "18° Partly cloudy", plus "· rain around 15:00" (or snow) when it's 60%+ likely in the next 12 hours and it isn't already raining. Until weather is set up, the line reads "Set up weather" in faint text; tapping it opens the setup: approximate location (asks for coarse location then), a typed city (Open-Meteo place search), or no weather. Forecasts come from Open-Meteo (free, no account) with the position rounded to 0.1° (about 10 km), fetched when home shows and every 30 minutes at most, and kept on the phone so they show at once after a restart. Forecasts older than 6 hours aren't shown. °C or °F.
+- **Weather screen (v0.5):** tap the weather line. Now (big temperature, conditions, feels like, today's high and low, wind, humidity), the next 24 hours (temperature, rain chance from 20%), this week (conditions, rain chance, low / high), sunrise and sunset, when it was updated, Refresh. Tapping the place name changes it. Back or Done returns home.
+- **Calendar line (v0.5)** under the weather line: off until calendars are picked in Settings (asks for calendar access then; only reads). Shows today's event: the next one if it starts within 30 minutes or nothing is going on ("14:00 Dentist"), otherwise the one going on ("Now · Work"); all-day events ("Today · Holiday") only when no timed event is left; nothing on a free day. Tapping it opens the event in the calendar app. Refreshed every minute while home is open.
 
 ### Gestures
 
@@ -39,7 +41,8 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Double-tap empty space | Lock screen (accessibility service) |
 | Hold empty space | Manage, on the Settings tab |
 | Tap clock / date | Clock / Calendar |
-| Tap weather line | Weather screen (v0.5) |
+| Tap weather line | Weather screen (or weather setup, until it's set up) |
+| Tap calendar line | That event in the calendar app |
 
 ## Drawer
 
@@ -92,8 +95,8 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Group | Setting | Default | Ships |
 |---|---|---|---|
 | Home | Big clock: auto / always / never | auto | v0.1 |
-| Home | Weather line; city or approximate location | on | v0.5 |
-| Home | Calendar line + calendars | off | v0.5 |
+| Home | Weather line: approximate location / city / off; °C or °F | asks on home until chosen; °C | v0.5 |
+| Home | Calendar line: calendars to read | off | v0.5 |
 | Home | Wallpaper dim | 0% | v0.4.1 |
 | Home | Alignment, text size, status bar | left, 30 sp, on | later |
 | Gestures | Double-tap to lock | on | v0.1 |

@@ -2,9 +2,15 @@ package io.github.salihoguz.minlauncher.ui
 
 import android.app.Application
 import android.net.Uri
+import android.text.format.DateFormat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.salihoguz.minlauncher.data.AppRepository
+import io.github.salihoguz.minlauncher.data.CalendarSource
+import io.github.salihoguz.minlauncher.data.PhoneCalendar
+import io.github.salihoguz.minlauncher.data.Place
+import io.github.salihoguz.minlauncher.data.WeatherMode
+import io.github.salihoguz.minlauncher.data.WeatherSource
 import io.github.salihoguz.minlauncher.data.LaunchLog
 import io.github.salihoguz.minlauncher.data.LauncherApp
 import io.github.salihoguz.minlauncher.data.LauncherSettings
@@ -12,6 +18,7 @@ import io.github.salihoguz.minlauncher.data.SettingsStore
 import io.github.salihoguz.minlauncher.data.Usage
 import io.github.salihoguz.minlauncher.data.VisitLog
 import io.github.salihoguz.minlauncher.domain.AppHistory
+import io.github.salihoguz.minlauncher.domain.CalendarEvent
 import io.github.salihoguz.minlauncher.domain.ClockMode
 import io.github.salihoguz.minlauncher.domain.DayUsage
 import io.github.salihoguz.minlauncher.domain.HomeLayout
@@ -20,6 +27,8 @@ import io.github.salihoguz.minlauncher.domain.LaunchSource
 import io.github.salihoguz.minlauncher.domain.Sections
 import io.github.salihoguz.minlauncher.domain.Visit
 import io.github.salihoguz.minlauncher.domain.VisitOutcome
+import io.github.salihoguz.minlauncher.domain.Weather
+import io.github.salihoguz.minlauncher.domain.WeatherReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -27,11 +36,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.Collator
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class UiState(
     val loaded: Boolean = false,
@@ -55,6 +71,16 @@ data class UiState(
 
 data class FolderGroup(val name: String, val apps: List<LauncherApp>)
 
+/** The lines under the date on home, ready to show. */
+data class HomeInfo(
+    val weather: String? = null,
+    /** Weather isn't set up yet: home offers to. */
+    val weatherHint: Boolean = false,
+    val event: String? = null,
+    /** The event behind [event], to open it. */
+    val eventRef: CalendarEvent? = null,
+)
+
 /** What Library and Stats show. Loaded when the Manage screen opens. */
 data class ManageData(
     val loaded: Boolean = false,
@@ -77,6 +103,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val visits = VisitLog(application)
     private val launches = LaunchLog(application)
     private val usage = Usage(application)
+    private val weatherSource = WeatherSource(application)
+    private val calendarSource = CalendarSource(application)
+
+    private val _weather = MutableStateFlow<WeatherReport?>(null)
+    /** The last forecast, whatever its age. */
+    val weather: StateFlow<WeatherReport?> = _weather
+    private val event = MutableStateFlow<CalendarEvent?>(null)
+    private val minute = MutableStateFlow(System.currentTimeMillis())
+    private var weatherJob: Job? = null
+    private var lastWeatherTry = 0L
+
+    val homeInfo: StateFlow<HomeInfo> = combine(store.settings, _weather, event, minute) { settings, report, next, now ->
+        buildHomeInfo(settings, report, next, now)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, HomeInfo())
 
     private val _manage = MutableStateFlow(ManageData())
     val manage: StateFlow<ManageData> = _manage
@@ -130,7 +170,78 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         save { store.ensureTrackingStarted() }
+        viewModelScope.launch { _weather.value = weatherSource.cached() }
+        // A new place or source fetches at once; new calendars are read at once.
+        viewModelScope.launch {
+            store.settings.map { it.weatherMode to it.weatherCity }.distinctUntilChanged().drop(1).collect { refreshWeather(force = true) }
+        }
+        viewModelScope.launch {
+            store.settings.map { it.calendarIds }.distinctUntilChanged().collect { refreshCalendar() }
+        }
     }
+
+    /** Called when home shows and every minute while it's open. Cheap when nothing is due. */
+    fun refreshHomeInfo() {
+        minute.value = System.currentTimeMillis()
+        refreshCalendar()
+        refreshWeather()
+    }
+
+    private fun refreshCalendar() = viewModelScope.launch {
+        event.value = calendarSource.nextEvent(store.settings.first().calendarIds, System.currentTimeMillis())
+    }
+
+    /** Fetches a forecast when the last one is 30 minutes old, or now with [force]. */
+    fun refreshWeather(force: Boolean = false) {
+        if (!force && weatherJob?.isActive == true) return
+        weatherJob?.cancel()
+        weatherJob = viewModelScope.launch {
+            val settings = store.settings.first()
+            val now = System.currentTimeMillis()
+            val current = _weather.value
+            if (!force && current != null && now - current.fetchedAt < Weather.REFRESH_MS) return@launch
+            // After a failure (offline), wait a little before trying again.
+            if (!force && now - lastWeatherTry < 5 * 60 * 1000L) return@launch
+            lastWeatherTry = now
+            val place = when (settings.weatherMode) {
+                WeatherMode.LOCATION -> weatherSource.approximateLocation()
+                WeatherMode.CITY -> settings.weatherCity
+                else -> null
+            } ?: return@launch
+            weatherSource.fetch(place.latitude, place.longitude, place.name)?.let { _weather.value = it }
+        }
+    }
+
+    private fun buildHomeInfo(settings: LauncherSettings, report: WeatherReport?, next: CalendarEvent?, now: Long): HomeInfo {
+        val app = getApplication<Application>()
+        val time = SimpleDateFormat(if (DateFormat.is24HourFormat(app)) "HH:mm" else "h:mm a", Locale.getDefault())
+        val weatherOn = settings.weatherMode == WeatherMode.LOCATION || settings.weatherMode == WeatherMode.CITY
+        val weatherLine = report
+            ?.takeIf { weatherOn && !Weather.isStale(it, now) }
+            ?.let { Weather.headline(it, now, settings.fahrenheit) { t -> time.format(Date(t)) } }
+        val eventLine = next?.let {
+            when {
+                it.allDay -> "Today · ${it.title}"
+                it.begin <= now -> "Now · ${it.title}"
+                else -> "${time.format(Date(it.begin))} ${it.title}"
+            }
+        }
+        return HomeInfo(
+            weather = weatherLine,
+            weatherHint = settings.weatherMode == null,
+            event = eventLine,
+            eventRef = next,
+        )
+    }
+
+    fun hasLocationPermission() = weatherSource.hasLocationPermission()
+    fun hasCalendarPermission() = calendarSource.hasPermission()
+    suspend fun searchPlaces(name: String): List<Place> = weatherSource.search(name)
+    suspend fun loadCalendars(): List<PhoneCalendar> = calendarSource.calendars()
+    fun setWeatherMode(mode: WeatherMode) = save { store.setWeatherMode(mode) }
+    fun setWeatherCity(place: Place) = save { store.setWeatherCity(place) }
+    fun setFahrenheit(value: Boolean) = save { store.setFahrenheit(value) }
+    fun setCalendars(ids: Set<Long>) = save { store.setCalendars(ids) }
 
     fun start() = repository.start()
     fun stop() = repository.stop()

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import io.github.salihoguz.minlauncher.LockService
+import io.github.salihoguz.minlauncher.data.WeatherMode
 import io.github.salihoguz.minlauncher.domain.ClockMode
 import io.github.salihoguz.minlauncher.system.Actions
 import java.text.SimpleDateFormat
@@ -66,6 +67,8 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
     var renamingFolder by remember { mutableStateOf<String?>(null) }
     var deletingFolder by remember { mutableStateOf<FolderGroup?>(null) }
     var confirmingImport by remember { mutableStateOf(false) }
+    var weatherDialog by remember { mutableStateOf(false) }
+    var calendarDialog by remember { mutableStateOf(false) }
 
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
@@ -107,6 +110,41 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
             )
         }
         item { DimSlider("Wallpaper dim", settings.homeDim, viewModel::setHomeDim) }
+        item {
+            LinkRow(
+                title = "Weather line",
+                help = "Under the date. Tap it on home for the next hours and the week.",
+                value = when (settings.weatherMode) {
+                    WeatherMode.LOCATION -> "Approximate location ›"
+                    WeatherMode.CITY -> (settings.weatherCity?.name ?: "City") + " ›"
+                    else -> "Off ›"
+                },
+                onClick = { weatherDialog = true },
+            )
+        }
+        if (settings.weatherMode == WeatherMode.LOCATION || settings.weatherMode == WeatherMode.CITY) {
+            item {
+                Choice(
+                    title = "Temperature",
+                    help = null,
+                    options = listOf("°C" to false, "°F" to true),
+                    selected = settings.fahrenheit,
+                    onSelect = viewModel::setFahrenheit,
+                )
+            }
+        }
+        item {
+            LinkRow(
+                title = "Calendar line",
+                help = "Today's next event under the date; nothing on a free day.",
+                value = when (val n = settings.calendarIds.size) {
+                    0 -> "Off ›"
+                    1 -> "1 calendar ›"
+                    else -> "$n calendars ›"
+                },
+                onClick = { calendarDialog = true },
+            )
+        }
 
         item { SectionLabel("Drawer") }
         item { Toggle("Open with the keyboard", null, settings.keyboardOnOpen, viewModel::setKeyboardOnOpen) }
@@ -268,6 +306,8 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
             },
         )
     }
+    if (weatherDialog) WeatherSetupDialog(viewModel, onDismiss = { weatherDialog = false })
+    if (calendarDialog) CalendarPickerDialog(viewModel, settings.calendarIds, onDismiss = { calendarDialog = false })
     if (confirmingImport) {
         AlertDialog(
             onDismissRequest = { confirmingImport = false },

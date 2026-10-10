@@ -66,6 +66,9 @@ class HomeActions(
     val onEmptyLongPress: () -> Unit,
     val onClock: () -> Unit,
     val onDate: () -> Unit,
+    /** The weather line (or the offer to set it up). */
+    val onWeather: () -> Unit,
+    val onEvent: () -> Unit,
 )
 
 /** Olauncher's numbers, in dp and sp. */
@@ -96,6 +99,7 @@ fun HomeScreen(
     apps: List<LauncherApp>,
     clockMode: ClockMode,
     loaded: Boolean,
+    info: HomeInfo,
     actions: HomeActions,
 ) {
     val density = LocalDensity.current
@@ -117,6 +121,8 @@ fun HomeScreen(
     var area by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var clockBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var dateBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var weatherBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var eventBox by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     fun toArea(rootPos: Offset): Offset? {
         val r = root ?: return null
@@ -193,6 +199,8 @@ fun HomeScreen(
                             hit != null -> order.getOrNull(hit)?.let { current.onOpen(it) }
                             geometry.showClock && isInside(clockBox, start) -> current.onClock()
                             isInside(dateBox, start) -> current.onDate()
+                            isInside(weatherBox, start) -> current.onWeather()
+                            isInside(eventBox, start) -> current.onEvent()
                             down.uptimeMillis - lastTapTime <= doubleTapMs &&
                                 (start - lastTapPos).getDistance() < slop * 4 -> {
                                 lastTapTime = 0L
@@ -266,8 +274,11 @@ fun HomeScreen(
         ) {
             Header(
                 showClock = showClock,
+                info = info,
                 onClockPlaced = { clockBox = it },
                 onDatePlaced = { dateBox = it },
+                onWeatherPlaced = { weatherBox = it },
+                onEventPlaced = { eventBox = it },
             )
             BoxWithConstraints(
                 Modifier
@@ -334,8 +345,11 @@ fun HomeScreen(
 @Composable
 private fun Header(
     showClock: Boolean,
+    info: HomeInfo,
     onClockPlaced: (LayoutCoordinates) -> Unit,
     onDatePlaced: (LayoutCoordinates) -> Unit,
+    onWeatherPlaced: (LayoutCoordinates) -> Unit,
+    onEventPlaced: (LayoutCoordinates) -> Unit,
 ) {
     val context = LocalContext.current
     val now by produceState(System.currentTimeMillis()) {
@@ -365,5 +379,28 @@ private fun Header(
                 .padding(start = 3.dp)
                 .onGloballyPositioned(onDatePlaced),
         )
+        val weather = info.weather ?: if (info.weatherHint) "Set up weather" else null
+        if (weather != null) {
+            Text(
+                text = weather,
+                style = Ui.homeApp.copy(fontSize = 16.sp, color = if (info.weather != null) Ui.text else Ui.faint),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(start = 3.dp, top = 4.dp)
+                    .onGloballyPositioned(onWeatherPlaced),
+            )
+        }
+        info.event?.let { event ->
+            Text(
+                text = event,
+                style = Ui.homeApp.copy(fontSize = 16.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(start = 3.dp, top = 4.dp)
+                    .onGloballyPositioned(onEventPlaced),
+            )
+        }
     }
 }

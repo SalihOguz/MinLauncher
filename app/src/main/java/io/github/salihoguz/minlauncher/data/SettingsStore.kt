@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -21,6 +22,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "launcher")
+
+/** Where the weather line gets its weather. Not set up yet when null. */
+enum class WeatherMode { OFF, LOCATION, CITY }
 
 data class LauncherSettings(
     val home: List<String> = emptyList(),
@@ -58,6 +62,12 @@ data class LauncherSettings(
     val placedAt: Map<String, Long> = emptyMap(),
     /** When "Not now" was pressed on each Stats suggestion. */
     val snoozedSuggestions: Map<String, Long> = emptyMap(),
+    val weatherMode: WeatherMode? = null,
+    /** The typed city, for [WeatherMode.CITY]. */
+    val weatherCity: Place? = null,
+    val fahrenheit: Boolean = false,
+    /** Calendars the home line reads. None: no calendar line. */
+    val calendarIds: Set<Long> = emptySet(),
 )
 
 class SettingsStore(context: Context) {
@@ -110,6 +120,14 @@ class SettingsStore(context: Context) {
             folderOf = folderOf,
             placedAt = placedAt,
             snoozedSuggestions = snoozed,
+            weatherMode = p[WEATHER_MODE]?.let { name -> WeatherMode.entries.firstOrNull { it.name == name } },
+            weatherCity = p[WEATHER_CITY]?.let { name ->
+                val lat = p[WEATHER_LAT]
+                val lon = p[WEATHER_LON]
+                if (lat != null && lon != null) Place(name, p[WEATHER_CITY_DETAIL].orEmpty(), lat, lon) else null
+            },
+            fahrenheit = p[FAHRENHEIT] ?: false,
+            calendarIds = p[CALENDARS].orEmpty().mapNotNull { it.toLongOrNull() }.toSet(),
         )
     }
 
@@ -157,6 +175,7 @@ class SettingsStore(context: Context) {
                 is Int -> JSONObject().put("type", "int").put("value", value)
                 is Long -> JSONObject().put("type", "long").put("value", value)
                 is Float -> JSONObject().put("type", "float").put("value", value.toDouble())
+                is Double -> JSONObject().put("type", "double").put("value", value)
                 is String -> JSONObject().put("type", "string").put("value", value)
                 is Set<*> -> JSONObject().put("type", "strings").put("value", JSONArray(value.map { it.toString() }))
                 else -> continue
@@ -183,6 +202,7 @@ class SettingsStore(context: Context) {
                     "int" -> intPreferencesKey(name) to entry.getInt("value")
                     "long" -> longPreferencesKey(name) to entry.getLong("value")
                     "float" -> floatPreferencesKey(name) to entry.getDouble("value").toFloat()
+                    "double" -> doublePreferencesKey(name) to entry.getDouble("value")
                     "string" -> stringPreferencesKey(name) to entry.getString("value")
                     "strings" -> {
                         val array = entry.getJSONArray("value")
@@ -289,6 +309,16 @@ class SettingsStore(context: Context) {
     suspend fun setHomeDim(value: Float) = store.edit { it[HOME_DIM] = value.coerceIn(0f, 0.8f) }
     suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 10) }
     suspend fun setAlphabetRail(value: Boolean) = store.edit { it[ALPHABET_RAIL] = value }
+    suspend fun setWeatherMode(mode: WeatherMode) = store.edit { it[WEATHER_MODE] = mode.name }
+    suspend fun setWeatherCity(place: Place) = store.edit { p ->
+        p[WEATHER_MODE] = WeatherMode.CITY.name
+        p[WEATHER_CITY] = place.name
+        p[WEATHER_CITY_DETAIL] = place.detail
+        p[WEATHER_LAT] = place.latitude
+        p[WEATHER_LON] = place.longitude
+    }
+    suspend fun setFahrenheit(value: Boolean) = store.edit { it[FAHRENHEIT] = value }
+    suspend fun setCalendars(ids: Set<Long>) = store.edit { it[CALENDARS] = ids.mapTo(HashSet()) { id -> id.toString() } }
 
     private fun String?.toKeyList(): List<String> =
         this?.split(SEPARATOR)?.filter { it.isNotBlank() }?.distinct().orEmpty()
@@ -323,6 +353,13 @@ class SettingsStore(context: Context) {
         val HOME_DIM = floatPreferencesKey("home_dim")
         val RECENT_COUNT = intPreferencesKey("recent_count")
         val ALPHABET_RAIL = booleanPreferencesKey("alphabet_rail")
+        val WEATHER_MODE = stringPreferencesKey("weather_mode")
+        val WEATHER_CITY = stringPreferencesKey("weather_city")
+        val WEATHER_CITY_DETAIL = stringPreferencesKey("weather_city_detail")
+        val WEATHER_LAT = doublePreferencesKey("weather_lat")
+        val WEATHER_LON = doublePreferencesKey("weather_lon")
+        val FAHRENHEIT = booleanPreferencesKey("fahrenheit")
+        val CALENDARS = stringSetPreferencesKey("calendars")
         val TRACKING_SINCE = longPreferencesKey("tracking_since")
     }
 }

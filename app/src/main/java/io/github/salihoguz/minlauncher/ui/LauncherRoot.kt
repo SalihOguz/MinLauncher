@@ -19,19 +19,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.salihoguz.minlauncher.data.LauncherApp
 import io.github.salihoguz.minlauncher.domain.HomeLayout
 import io.github.salihoguz.minlauncher.domain.LaunchSource
 import io.github.salihoguz.minlauncher.system.Actions
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 
-private enum class Screen { HOME, DRAWER, MANAGE }
+private enum class Screen { HOME, DRAWER, MANAGE, WEATHER }
 
 @Composable
 fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val manage by viewModel.manage.collectAsStateWithLifecycle()
+    val homeInfo by viewModel.homeInfo.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
 
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
@@ -39,6 +45,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
     var libraryFilter by rememberSaveable { mutableStateOf(LibraryFilter.ALL) }
     var sheetKey by rememberSaveable { mutableStateOf<String?>(null) }
     var renameKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var weatherSetup by rememberSaveable { mutableStateOf(false) }
     // The "New folder" dialog, and the app to file in it when it was opened from an app's menu.
     var naming by rememberSaveable { mutableStateOf(false) }
     var namingFor by rememberSaveable { mutableStateOf<String?>(null) }
@@ -51,6 +58,16 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             renameKey = null
             naming = false
             namingFor = null
+            weatherSetup = false
+        }
+    }
+    // Weather and today's event stay current while the launcher is in front.
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                viewModel.refreshHomeInfo()
+                delay(60_000L - System.currentTimeMillis() % 60_000L)
+            }
         }
     }
     // A launcher has nowhere to go back to.
@@ -77,7 +94,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
             targetValue = when (screen) {
                 Screen.HOME -> state.settings.homeDim
                 Screen.DRAWER -> state.settings.drawerDim
-                Screen.MANAGE -> maxOf(0.6f, state.settings.homeDim)
+                Screen.MANAGE, Screen.WEATHER -> maxOf(0.6f, state.settings.homeDim)
             },
             animationSpec = tween(durationMillis = 220),
             label = "dim",
@@ -94,6 +111,7 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 apps = state.home,
                 clockMode = state.settings.clockMode,
                 loaded = state.loaded,
+                info = homeInfo,
                 actions = HomeActions(
                     onOpen = { open(it, LaunchSource.HOME) },
                     onAppLongPress = { sheetKey = it.key },
@@ -110,6 +128,12 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                     onEmptyLongPress = { openManage(ManageTab.SETTINGS) },
                     onClock = { Actions.clock(context) },
                     onDate = { Actions.calendar(context) },
+                    onWeather = {
+                        if (homeInfo.weather != null) screen = Screen.WEATHER else weatherSetup = true
+                    },
+                    onEvent = {
+                        homeInfo.eventRef?.let { Actions.calendarEvent(context, it.id, it.begin, it.end) }
+                    },
                 ),
             )
         }
@@ -150,6 +174,17 @@ fun LauncherRoot(viewModel: LauncherViewModel, homePresses: Flow<Unit>) {
                 onClose = { screen = Screen.HOME },
             )
         }
+
+        AnimatedVisibility(visible = screen == Screen.WEATHER, enter = fadeIn(), exit = fadeOut()) {
+            WeatherScreen(
+                viewModel = viewModel,
+                fahrenheit = state.settings.fahrenheit,
+                onSetUp = { weatherSetup = true },
+                onClose = { screen = Screen.HOME },
+            )
+        }
+
+        if (weatherSetup) WeatherSetupDialog(viewModel, onDismiss = { weatherSetup = false })
 
         find(sheetKey)?.let { app ->
             val onHome = app.key in state.homeKeys
