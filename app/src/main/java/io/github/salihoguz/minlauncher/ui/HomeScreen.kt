@@ -234,7 +234,7 @@ fun HomeScreen(
                                 current.onEmptyLongPress()
                             } else {
                                 dragKey = order[hit].key
-                                var from = hit
+                                var from: Int = hit
                                 var moved = false
                                 while (true) {
                                     val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
