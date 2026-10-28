@@ -25,7 +25,7 @@ import io.github.salihoguz.minlauncher.data.InstalledApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-val IconSize = 26.dp
+val IconSize = IconSizeDp.dp
 private val glyphColor = Ui.text.copy(alpha = 0.82f)
 
 /** The app's one-colour icon (or full colour with [color]); blank until it has loaded. */

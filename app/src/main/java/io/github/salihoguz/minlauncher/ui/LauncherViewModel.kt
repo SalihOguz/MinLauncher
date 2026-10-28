@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.salihoguz.minlauncher.data.AppRepository
 import io.github.salihoguz.minlauncher.data.CalendarSource
+import io.github.salihoguz.minlauncher.data.IconCache
 import io.github.salihoguz.minlauncher.data.PhoneCalendar
 import io.github.salihoguz.minlauncher.data.Place
 import io.github.salihoguz.minlauncher.data.WeatherMode
@@ -48,6 +49,7 @@ import java.text.Collator
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 data class UiState(
     val loaded: Boolean = false,
@@ -95,6 +97,9 @@ data class ManageData(
     val visits: List<Visit> = emptyList(),
     val launches: List<Launch> = emptyList(),
 )
+
+/** Matches [IconSize] in Glyphs.kt, so preloaded icons are the ones the drawer shows. */
+internal const val IconSizeDp = 26
 
 class LauncherViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -170,6 +175,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     init {
         save { store.ensureTrackingStarted() }
+        // Draw the drawer's icons ahead of time, so opening it doesn't wait for them.
+        viewModelScope.launch {
+            val apps = state.first { it.loaded }.let { it.apps + it.hidden }
+            val sizePx = (IconSizeDp * application.resources.displayMetrics.density).roundToInt()
+            withContext(Dispatchers.IO) { apps.forEach { IconCache.load(application, it.app, sizePx) } }
+        }
         viewModelScope.launch { _weather.value = weatherSource.cached() }
         // A new place or source fetches at once; new calendars are read at once.
         viewModelScope.launch {

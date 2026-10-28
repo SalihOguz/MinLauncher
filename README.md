@@ -59,8 +59,8 @@ MinLauncher keeps the look that made [Olauncher](https://github.com/tanujnotes/O
 - **Enter searches the web** in Brave, or in your browser with Brave Search. You can switch Enter to "open the top app" instead.
 - With the keyboard down, from your thumb upward:
   - **Pinned:** two columns of apps you choose, drag to reorder.
-  - **Recent:** your last 5 apps, skipping home apps, pinned apps and games.
-  - **New:** apps you've installed but not opened yet.
+  - **Recent:** your last 6 apps in two columns, names only, so it's quick without pulling you in. Skips home apps, pinned apps and games.
+  - **New:** apps you've installed but not opened yet, newest at the bottom.
   - **Folders:** yours, opened in place. MinLauncher suggests one from Android's app category.
   - **All apps:** with the A–Z rail along the edge. ↓ at the bottom of the rail jumps back to Pinned.
 - The list never jumps under your finger when the keyboard closes.

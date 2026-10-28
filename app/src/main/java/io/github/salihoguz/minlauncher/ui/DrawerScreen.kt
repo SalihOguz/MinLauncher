@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -48,7 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -156,30 +157,31 @@ fun DrawerScreen(
     // - When MinLauncher puts the keyboard away (you scrolled or tapped the list), that room
     //   stays, so nothing moves under your finger.
     // - When you put it away yourself (Back), the list follows it down to the search bar.
+    // The keyboard's position is read in derived states, not in composition, so the drawer
+    // doesn't recompose on every frame of the keyboard sliding in (that made opening laggy).
     val density = LocalDensity.current
-    val imeBottom = WindowInsets.ime.getBottom(density)
-    val imeTarget = WindowInsets.imeAnimationTarget.getBottom(density)
+    val ime = WindowInsets.ime
+    val imeTarget = WindowInsets.imeAnimationTarget
     val navBottom = WindowInsets.navigationBars.getBottom(density)
-    val room = (imeBottom - navBottom).coerceAtLeast(0)
+    // Where the keyboard is heading: its full height while opening, 0 while closing.
+    val targetRoom by remember(density, navBottom) {
+        derivedStateOf { (imeTarget.getBottom(density) - navBottom).coerceAtLeast(0) }
+    }
+    val keyboardUp by remember(density, navBottom) { derivedStateOf { ime.getBottom(density) > navBottom } }
     var keyboardRoom by remember { mutableIntStateOf(0) }
     var holdRoom by remember { mutableStateOf(false) }
-    var followDown by remember { mutableStateOf(false) }
-    SideEffect {
-        if (room > keyboardRoom) keyboardRoom = room
-        // Fully up: whoever closes it next decides what happens.
-        if (room > 0 && imeBottom == imeTarget) holdRoom = false
-        if (!holdRoom && room < keyboardRoom) {
-            keyboardRoom = room
-            followDown = true
+    LaunchedEffect(targetRoom) {
+        when {
+            targetRoom >= keyboardRoom -> keyboardRoom = targetRoom
+            !holdRoom -> {
+                // Put away with Back: the list comes down to the search bar.
+                keyboardRoom = targetRoom
+                listState.animateScrollToItem(0)
+            }
         }
+        // Opening again: whoever closes it next decides what happens.
+        if (targetRoom > 0) holdRoom = false
     }
-    LaunchedEffect(followDown) {
-        if (followDown) {
-            listState.animateScrollToItem(0)
-            followDown = false
-        }
-    }
-    val keyboardUp by rememberUpdatedState(room > 0)
 
     fun putKeyboardAway() {
         if (keyboardUp) {
@@ -264,6 +266,7 @@ fun DrawerScreen(
                 when (row) {
                     is DrawerRow.Web -> WebRow(row.query) { searchWeb(row.query) }
                     is DrawerRow.App -> AppRow(row.app, { open(row.app, row.outcome) }, onLongPress, inFolder = row.inFolder)
+                    is DrawerRow.Recent -> RecentGrid(row.apps, { open(it, VisitOutcome.RECENT) }, onLongPress)
                     is DrawerRow.Pinned -> PinnedGrid(row.apps, { open(it, VisitOutcome.PINNED) }, onLongPress, onReorderPinned)
                     is DrawerRow.Folder -> FolderRow(row.name, row.count, row.open) {
                         if (row.open) expanded.remove(row.name) else expanded.add(row.name)
@@ -317,6 +320,10 @@ private sealed interface DrawerRow {
         override val key get() = "pinned"
     }
 
+    data class Recent(val apps: List<LauncherApp>) : DrawerRow {
+        override val key get() = "recent"
+    }
+
     data class App(
         val app: LauncherApp,
         val outcome: VisitOutcome,
@@ -345,12 +352,10 @@ private fun buildRows(state: UiState, query: String, results: List<LauncherApp>,
         return DrawerRows(rows, allAppsStart = 0)
     }
     if (state.pinned.isNotEmpty()) rows += DrawerRow.Pinned(state.pinned)
-    if (state.recent.isNotEmpty()) {
-        state.recent.asReversed().forEach { rows += DrawerRow.App(it, VisitOutcome.RECENT, "recent-" + it.key) }
-        rows += DrawerRow.Label("Recent", "recent-label")
-    }
+    if (state.recent.isNotEmpty()) rows += DrawerRow.Recent(state.recent)
     if (state.newApps.isNotEmpty()) {
-        state.newApps.asReversed().forEach { rows += DrawerRow.App(it, VisitOutcome.NEW, "new-" + it.key) }
+        // Newest first, so the newest sits at the bottom, nearest your thumb.
+        state.newApps.forEach { rows += DrawerRow.App(it, VisitOutcome.NEW, "new-" + it.key) }
         rows += DrawerRow.Label("New", "new-label")
     }
     rows += DrawerRow.NewFolder
@@ -580,6 +585,47 @@ fun SectionLabel(text: String) {
         style = Ui.label,
         modifier = Modifier.padding(top = 18.dp, bottom = 4.dp),
     )
+}
+
+/**
+ * Recent apps in two text columns, like Pinned, without icons. The most recent is at the bottom
+ * left, then bottom right, then the row above.
+ */
+@Composable
+private fun RecentGrid(apps: List<LauncherApp>, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Column(Modifier.fillMaxWidth()) {
+        SectionLabel("Recent")
+        val rows = apps.chunked(2)
+        for (row in rows.asReversed()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                for (column in 0..1) {
+                    val app = row.getOrNull(column)
+                    Box(
+                        contentAlignment = Alignment.CenterStart,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .then(
+                                if (app == null) Modifier else Modifier.combinedClickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onLongClick = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onLongPress(app)
+                                    },
+                                    onClick = { onOpen(app) },
+                                ),
+                            ),
+                    ) {
+                        if (app != null) {
+                            Text(app.label, style = Ui.drawerApp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 private const val TAP = 1

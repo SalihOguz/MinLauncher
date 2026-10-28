@@ -60,8 +60,8 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - **Icons:** every drawer row except Pinned gets a small grey version of the app's own icon, all in the same rounded-square shape (adaptive icons are trimmed to it; old square icons fill it; round or odd old icons sit on a white tile). Icons are always there, so names never shift.
 - **Search matching,** best first: start of the name, start of any word, the app's search words (`bank` → Halkbank), initials (`kn` → Keep Notes), inside the name (from 3 letters), small typos (from 4 letters: `alrmy` → Alarmy). Ignores symbols and accents (`edevlet` → e-Devlet).
 - Scrolling the list hides the keyboard.
-- **Recent (v0.2):** 5 apps (setting: off, 5, 10), most recently opened from MinLauncher first. Skips apps on home, pinned apps, games, and any app with "Show in Recent" off (per-app switch, off by default for games). "Remove from Recent" hides an app until it's opened again.
-- **New (v0.2):** apps installed after MinLauncher started keeping track, never opened from it; they stay until opened once (or removed, pinned, or put on home). ✦ marker for 3 days after install, wherever the name appears.
+- **Recent (v0.2):** the last 6 apps opened from MinLauncher, in two text columns like Pinned, without icons (from v1.1). The most recent is at the bottom left, then bottom right, then the row above. Setting: on or off. Skips apps on home, pinned apps, games, and any app with "Show in Recent" off (per-app switch, off by default for games). "Remove from Recent" hides an app until it's opened again.
+- **New (v0.2):** apps installed after MinLauncher started keeping track, never opened from it; they stay until opened once (or removed, pinned, or put on home). Newest at the bottom. ✦ marker for 3 days after install, wherever the name appears.
 - **Folders (v0.3):** user-created, from "New folder" in the drawer, "+ New folder" in Move to folder, or Settings. Each folder row shows its app count and opens in place (tap again to close). Open folders show an open-folder icon and a thin line joining them to their apps, which line up under the folder's name. An app in no folder is only in All apps. An unfiled app's sheet suggests a folder from `ApplicationInfo.category` (Games, Media, Social, News, Travel, Work), reusing an existing folder of that name. Settings: rename, delete (apps just leave the folder), move up/down. Names up to 24 letters.
 - **A–Z rail (v0.3):** #, A–Z and ↓ down the right edge while the keyboard is down and nothing is typed (setting, default on). Letters bend away from the finger and a bubble shows the letter. It only scrolls: the first app under the letter (or the next letter with apps) comes to the top of the screen. # is for names that don't start with A–Z; ↓ jumps to the bottom (Pinned). Opening an app from All apps after using the rail counts as a rail visit in Stats.
 - **Manage button (v0.4):** four small squares at the right end of the search bar while nothing is typed; opens Manage on Library.
@@ -105,7 +105,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | Drawer | Opens with the keyboard | on | v0.1 |
 | Drawer | Only match opens itself | off | v0.1 |
 | Drawer | Enter key: web search / top app | web search | v0.1 |
-| Drawer | Recent: off / 5 / 10 | 5 | v0.2 |
+| Drawer | Recent: off / on (6) | on | v0.2, grid from v1.1 |
 | Drawer | Wallpaper dim | 45% | v0.1, own setting from v0.4.1 |
 | Drawer | A–Z rail | on | v0.3 |
 | Apps | Hidden apps | — | v0.1 |
@@ -122,6 +122,10 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 | v0.3 | Browse: mono icons, folders + New folder + Unsorted + category suggestions, A–Z rail |
 | v0.4 | Manage: Library + Stats with suggestions, usage access |
 | v0.5 | Weather line and screen, calendar line with calendar picker |
+
+## Orientation
+
+MinLauncher stays in portrait, whichever way the phone is held.
 
 ## Getting builds onto the phone
 

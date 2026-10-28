@@ -42,7 +42,7 @@ data class LauncherSettings(
     /** How much the drawer darkens the wallpaper, 0..0.8. */
     val drawerDim: Float = 0.45f,
     /** How many Recent apps the drawer shows: 0, 5 or 10. */
-    val recentCount: Int = 5,
+    val recentCount: Int = 6,
     /** The A–Z rail down the drawer's right edge. */
     val alphabetRail: Boolean = true,
     /** When MinLauncher started keeping track. Apps installed after this can be New. */
@@ -109,7 +109,8 @@ class SettingsStore(context: Context) {
             doubleTapToLock = p[DOUBLE_TAP_LOCK] ?: true,
             homeDim = p[HOME_DIM] ?: 0f,
             drawerDim = p[DRAWER_DIM] ?: 0.45f,
-            recentCount = p[RECENT_COUNT] ?: 5,
+            // Two columns of three; older versions offered 5 or 10.
+            recentCount = if ((p[RECENT_COUNT] ?: 6) > 0) 6 else 0,
             alphabetRail = p[ALPHABET_RAIL] ?: true,
             trackingSince = p[TRACKING_SINCE] ?: Long.MAX_VALUE,
             lastOpened = lastOpened,
@@ -307,7 +308,7 @@ class SettingsStore(context: Context) {
     suspend fun setDoubleTapToLock(value: Boolean) = store.edit { it[DOUBLE_TAP_LOCK] = value }
     suspend fun setDrawerDim(value: Float) = store.edit { it[DRAWER_DIM] = value.coerceIn(0f, 0.8f) }
     suspend fun setHomeDim(value: Float) = store.edit { it[HOME_DIM] = value.coerceIn(0f, 0.8f) }
-    suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 10) }
+    suspend fun setRecentCount(value: Int) = store.edit { it[RECENT_COUNT] = value.coerceIn(0, 6) }
     suspend fun setAlphabetRail(value: Boolean) = store.edit { it[ALPHABET_RAIL] = value }
     suspend fun setWeatherMode(mode: WeatherMode) = store.edit { it[WEATHER_MODE] = mode.name }
     suspend fun setWeatherCity(place: Place) = store.edit { p ->

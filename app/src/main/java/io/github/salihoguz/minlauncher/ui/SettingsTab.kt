@@ -160,8 +160,9 @@ fun SettingsTab(state: UiState, data: ManageData, viewModel: LauncherViewModel, 
         item {
             Choice(
                 title = "Recent apps",
-                help = "Skips apps on home, pinned apps, and games. Turn it off per app from its long-press menu.",
-                options = listOf("Off" to 0, "5" to 5, "10" to 10),
+                help = "Your last 6, in two columns without icons. Skips apps on home, pinned apps, and games. " +
+                    "Turn it off per app from its long-press menu.",
+                options = listOf("Off" to 0, "On" to 6),
                 selected = settings.recentCount,
                 onSelect = viewModel::setRecentCount,
             )
