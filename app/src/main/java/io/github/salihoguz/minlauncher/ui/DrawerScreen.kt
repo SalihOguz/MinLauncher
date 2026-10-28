@@ -89,6 +89,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.salihoguz.minlauncher.data.LauncherApp
@@ -225,6 +226,15 @@ fun DrawerScreen(
     var barTop by remember { mutableFloatStateOf(Float.POSITIVE_INFINITY) }
     var listTop by remember { mutableFloatStateOf(0f) }
 
+    // Pinned and Recent shrink their rows (down to 34 dp) so both fit above the keyboard.
+    var listHeight by remember { mutableIntStateOf(0) }
+    val gridRows = (state.pinned.size + 1) / 2 + (state.recent.size + 1) / 2
+    val gridLabels = (if (state.pinned.isNotEmpty()) 1 else 0) + (if (state.recent.isNotEmpty()) 1 else 0)
+    val gridCell = if (listHeight == 0 || gridRows == 0 || query.isNotBlank()) GridCellMax else with(density) {
+        val free = listHeight - keyboardRoom - (FadeHeight + 8.dp + LabelHeight * gridLabels).toPx()
+        (free / gridRows).toDp().coerceIn(GridCellMin, GridCellMax)
+    }
+
     // The darkening is drawn by LauncherRoot as its own layer, so it fades in evenly.
     Box(Modifier.fillMaxSize()) {
         // Row 0 sits on the search bar; the list grows upward from your thumb.
@@ -244,7 +254,10 @@ fun DrawerScreen(
                 .padding(bottom = SearchBarHeight)
                 // A tap on empty space puts the keyboard away and leaves the list where it is.
                 .pointerInput(Unit) { detectTapGestures { putKeyboardAway() } }
-                .onGloballyPositioned { listTop = it.positionInRoot().y }
+                .onGloballyPositioned {
+                    listTop = it.positionInRoot().y
+                    listHeight = it.size.height
+                }
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()
@@ -266,8 +279,8 @@ fun DrawerScreen(
                 when (row) {
                     is DrawerRow.Web -> WebRow(row.query) { searchWeb(row.query) }
                     is DrawerRow.App -> AppRow(row.app, { open(row.app, row.outcome) }, onLongPress, inFolder = row.inFolder)
-                    is DrawerRow.Recent -> RecentGrid(row.apps, { open(it, VisitOutcome.RECENT) }, onLongPress)
-                    is DrawerRow.Pinned -> PinnedGrid(row.apps, { open(it, VisitOutcome.PINNED) }, onLongPress, onReorderPinned)
+                    is DrawerRow.Recent -> RecentGrid(row.apps, gridCell, { open(it, VisitOutcome.RECENT) }, onLongPress)
+                    is DrawerRow.Pinned -> PinnedGrid(row.apps, gridCell, { open(it, VisitOutcome.PINNED) }, onLongPress, onReorderPinned)
                     is DrawerRow.Folder -> FolderRow(row.name, row.count, row.open) {
                         if (row.open) expanded.remove(row.name) else expanded.add(row.name)
                     }
@@ -399,6 +412,14 @@ private class VisitTracker {
 private val SearchBarHeight = 64.dp
 private val FadeHeight = 28.dp
 private val IconGap = 14.dp
+private val GridCellMax = 50.dp
+private val GridCellMin = 34.dp
+/** A section label's height: 18 dp above, the 11 sp text, 4 dp below. */
+private val LabelHeight = 37.dp
+
+/** Grid names shrink with their rows, from 26 sp at full height. */
+@Composable
+private fun gridNameStyle(cell: Dp) = Ui.drawerApp.copy(fontSize = with(LocalDensity.current) { minOf(26.sp.toPx(), cell.toPx() * 0.52f).toSp() })
 /** Apps in an open folder line up with the folder's name. */
 private val FolderIndent = IconSize + IconGap
 private val GuideColor = Color.White.copy(alpha = 0.28f)
@@ -592,7 +613,8 @@ fun SectionLabel(text: String) {
  * left, then bottom right, then the row above.
  */
 @Composable
-private fun RecentGrid(apps: List<LauncherApp>, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
+private fun RecentGrid(apps: List<LauncherApp>, cell: Dp, onOpen: (LauncherApp) -> Unit, onLongPress: (LauncherApp) -> Unit) {
+    val nameStyle = gridNameStyle(cell)
     val haptics = LocalHapticFeedback.current
     Column(Modifier.fillMaxWidth()) {
         SectionLabel("Recent")
@@ -605,7 +627,7 @@ private fun RecentGrid(apps: List<LauncherApp>, onOpen: (LauncherApp) -> Unit, o
                         contentAlignment = Alignment.CenterStart,
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .height(cell)
                             .then(
                                 if (app == null) Modifier else Modifier.combinedClickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -619,7 +641,7 @@ private fun RecentGrid(apps: List<LauncherApp>, onOpen: (LauncherApp) -> Unit, o
                             ),
                     ) {
                         if (app != null) {
-                            Text(app.label, style = Ui.drawerApp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(app.label, style = nameStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -636,10 +658,12 @@ private const val LONG_PRESS = 3
 @Composable
 private fun PinnedGrid(
     apps: List<LauncherApp>,
+    cell: Dp,
     onOpen: (LauncherApp) -> Unit,
     onLongPress: (LauncherApp) -> Unit,
     onReorder: (List<String>) -> Unit,
 ) {
+    val nameStyle = gridNameStyle(cell)
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     val open by rememberUpdatedState(onOpen)
@@ -655,7 +679,7 @@ private fun PinnedGrid(
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val gap = 12.dp
             val cellWidth = (maxWidth - gap) / 2
-            val cellHeight = 50.dp
+            val cellHeight = cell
             val rows = (order.size + 1) / 2
             val cellWidthPx = with(density) { cellWidth.toPx() }
             val cellHeightPx = with(density) { cellHeight.toPx() }
@@ -732,7 +756,7 @@ private fun PinnedGrid(
                         val y by animateDpAsState(cellHeight * (index / 2), label = "y")
                         Text(
                             text = app.label,
-                            style = Ui.drawerApp.copy(color = if (app.key == dragKey) Ui.highlight else Ui.text),
+                            style = nameStyle.copy(color = if (app.key == dragKey) Ui.highlight else Ui.text),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier

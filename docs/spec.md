@@ -56,7 +56,7 @@ Olauncher's home screen, kept as it is, with room for up to 28 apps. A drawer th
 - **Only match opens itself:** setting, default off.
 - No live web suggestions while typing.
 - **When not typing,** from the bar upward: Pinned, Recent (v0.2), New (v0.2), Folders (v0.3), All apps A–Z.
-- **Pinned:** two text columns, no icons, hold and drag to reorder. 8 pinned apps take 4 rows.
+- **Pinned:** two text columns, no icons, hold and drag to reorder. 8 pinned apps take 4 rows. Pinned and Recent rows shrink (from 50 dp down to 34 dp, names with them) so both fit above the keyboard.
 - **Icons:** every drawer row except Pinned gets a small grey version of the app's own icon, all in the same rounded-square shape (adaptive icons are trimmed to it; old square icons fill it; round or odd old icons sit on a white tile). Icons are always there, so names never shift.
 - **Search matching,** best first: start of the name, start of any word, the app's search words (`bank` → Halkbank), initials (`kn` → Keep Notes), inside the name (from 3 letters), small typos (from 4 letters: `alrmy` → Alarmy). Ignores symbols and accents (`edevlet` → e-Devlet).
 - Scrolling the list hides the keyboard.
